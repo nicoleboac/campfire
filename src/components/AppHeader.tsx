@@ -1,7 +1,6 @@
 import { useState } from 'react'
 import { SOURCES } from '../data/seed'
 import type { Source } from '../data/seed'
-import { AUTO_MATCHED_COUNT_BY_SOURCE } from '../data/autoMatched'
 import { cls } from '../theme/tokens'
 import type { Resolution } from '../hooks/useReconcile'
 import type { Item } from '../data/seed'
@@ -30,8 +29,6 @@ const sourceBadgeCls: Record<Source, string> = {
   receivables: 'bg-teal-100 text-teal-700',
   cards:       'bg-orange-100 text-orange-700',
 }
-
-const TOTAL_AUTO_MATCHED = Object.values(AUTO_MATCHED_COUNT_BY_SOURCE).reduce((a, b) => a + b, 0)
 
 const typeLabel: Record<string, string> = {
   'matched':                'Matched',
@@ -91,7 +88,7 @@ export function AppHeader({
 }: Props) {
   const [showResolved, setShowResolved] = useState(false)
   const [showFinishModal, setShowFinishModal] = useState(false)
-  const [autoMatchOpen, setAutoMatchOpen] = useState(false)
+
 
   const reconciledCount = SOURCE_ORDER.filter(src =>
     perSource[src].unexplained === 0 && perSource[src].openCount === 0
