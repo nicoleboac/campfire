@@ -186,8 +186,8 @@ export function LedgerView({
 }: Props) {
   const [unmatchedOnly, setUnmatchedOnly] = useState(false)
   const [localSearch, setLocalSearch] = useState('')
-  const [dateFrom, setDateFrom] = useState('')
-  const [dateTo, setDateTo] = useState('')
+  const [dateFrom, setDateFrom] = useState('2026-09-01')
+  const [dateTo, setDateTo] = useState('2026-09-30')
   const [selectedRow, setSelectedRow] = useState<string | null>(null)
 
   const parentRef = useRef<HTMLDivElement>(null)

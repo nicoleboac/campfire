@@ -36,9 +36,9 @@ function App() {
       />
 
       {/* Two-pane layout — always visible */}
-      <div className="flex flex-1 min-h-0">
+      <div className="flex flex-1 min-h-0 gap-4 px-6 py-4 bg-gray-50">
         {/* LEFT: Full Ledger */}
-        <div className="w-[38%] border-r border-gray-200 overflow-hidden flex flex-col">
+        <div className="w-[38%] rounded-xl border border-gray-200 overflow-hidden flex flex-col bg-white shadow-sm">
           <LedgerView
             items={rec.unresolvedItems}
             resolutions={rec.resolutions}
@@ -61,7 +61,7 @@ function App() {
         </div>
 
         {/* RIGHT: Issues workspace */}
-        <div className="flex-1 overflow-y-auto bg-gray-50">
+        <div className="flex-1 overflow-y-auto rounded-xl border border-gray-200 bg-white shadow-sm">
           <IssuesPanel
             activeSuggestions={rec.activeSuggestions}
             itemsWithoutSuggestion={rec.itemsWithoutSuggestion}

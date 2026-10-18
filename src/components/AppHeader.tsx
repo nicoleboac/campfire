@@ -110,62 +110,39 @@ export function AppHeader({
 
   return (
     <header className="bg-white border-b border-gray-200 sticky top-0 z-30 shadow-sm">
-      {/* Top row */}
-      <div className="px-8 py-3 flex items-center justify-between border-b border-gray-100">
-        <div>
-          <span className="text-sm font-bold text-gray-900">Sep 1–30, 2026</span>
-          <span className="text-sm text-gray-500 ml-2">Multi-source reconciliation</span>
-        </div>
-        <div className="flex items-center gap-4">
-          <button
-            onClick={() => setAutoMatchOpen(v => !v)}
-            className="text-xs text-gray-500 hover:text-gray-700 flex items-center gap-1"
-          >
-            <span className="w-2 h-2 rounded-full bg-green-400 inline-block" />
-            {TOTAL_AUTO_MATCHED.toLocaleString()} auto-matched across 4 sources
-            <span className="ml-0.5">{autoMatchOpen ? '▲' : '▼'}</span>
-          </button>
-          <span className="text-xs text-gray-400">
-            {resolvedCount} of {totalItems} resolved · {reconciledCount} of 4 sources reconciled
+      {/* Actions row */}
+      <div className="px-8 pt-4 pb-0 flex items-center justify-end gap-3">
+        <span className="text-xs text-gray-400">
+          {resolvedCount} of {totalItems} resolved · {reconciledCount} of 4 sources reconciled
+        </span>
+        <button
+          onClick={() => setShowResolved(true)}
+          className="text-xs text-gray-500 hover:text-gray-700 border border-gray-200 rounded px-2 py-1 hover:bg-gray-50 transition-colors"
+        >
+          Resolved ({resolvedCount})
+        </button>
+        {sentForReview ? (
+          <span className="text-xs text-green-600 font-medium bg-green-50 border border-green-200 rounded px-2 py-1">
+            Sent for review ✓
           </span>
+        ) : (
           <button
-            onClick={() => setShowResolved(true)}
-            className="text-xs text-gray-500 hover:text-gray-700 border border-gray-200 rounded px-2 py-1 hover:bg-gray-50 transition-colors"
+            onClick={handleFinishClick}
+            disabled={!canFinish || isLocked}
+            title={!canFinish ? finishBlockReason : undefined}
+            className={`text-xs font-medium px-3 py-1 rounded transition-colors ${
+              canFinish && !isLocked
+                ? 'bg-green-600 text-white hover:bg-green-700'
+                : 'bg-gray-100 text-gray-400 cursor-not-allowed'
+            }`}
           >
-            Resolved ({resolvedCount})
+            Finish →
           </button>
-          {sentForReview ? (
-            <span className="text-xs text-green-600 font-medium bg-green-50 border border-green-200 rounded px-2 py-1">
-              Sent for review ✓
-            </span>
-          ) : (
-            <button
-              onClick={handleFinishClick}
-              disabled={!canFinish || isLocked}
-              title={!canFinish ? finishBlockReason : undefined}
-              className={`text-xs font-medium px-3 py-1 rounded transition-colors ${
-                canFinish && !isLocked
-                  ? 'bg-green-600 text-white hover:bg-green-700'
-                  : 'bg-gray-100 text-gray-400 cursor-not-allowed'
-              }`}
-            >
-              Finish →
-            </button>
-          )}
-        </div>
+        )}
       </div>
 
-      {/* Auto-match expanded */}
-      {autoMatchOpen && (
-        <div className="mx-8 mt-2 mb-0 p-3 bg-green-50 border border-green-100 rounded-md text-xs text-green-700">
-          <strong>{TOTAL_AUTO_MATCHED.toLocaleString()} transactions</strong> were automatically matched across all 4 sources by amount, date, and payee.
-          No action required.{' '}
-          <button className="underline" onClick={() => setAutoMatchOpen(false)}>Dismiss</button>
-        </div>
-      )}
-
       {/* Source tiles row */}
-      <div className="grid grid-cols-4 gap-3 px-8 py-4">
+      <div className="grid grid-cols-4 gap-4 px-8 py-4">
         {SOURCE_ORDER.map(src => {
           const ps = perSource[src]
           const info = SOURCES[src]
