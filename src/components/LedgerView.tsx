@@ -191,6 +191,8 @@ export function LedgerView({
   const [selectedRow, setSelectedRow] = useState<string | null>(null)
 
   const parentRef = useRef<HTMLDivElement>(null)
+  // Always-current ref so scroll effect never reads stale filteredRows
+  const filteredRowsRef = useRef(filteredRows)
 
   // Use 'bank' as fallback if sourceFilter is 'all' (should not happen with new initial state)
   const effectiveSource: Source = sourceFilter === 'all' ? 'bank' : sourceFilter
@@ -228,6 +230,8 @@ export function LedgerView({
     })
   }, [allRows, unmatchedOnly, localSearch, searchQuery, dateFrom, dateTo])
 
+  filteredRowsRef.current = filteredRows // keep ref live on every render
+
   const unmatchedCount = filteredRows.filter(r => r.type !== 'matched').length
 
   const virtualizer = useVirtualizer({
@@ -237,17 +241,23 @@ export function LedgerView({
     overscan: 10,
   })
 
-  // Scroll to item when selectedItemKey changes from the right panel.
-  // Direct scrollTop is reliable regardless of virtualizer state.
+  // Scroll the ledger to the highlighted item.
+  // filteredRowsRef is updated every render so we never read a stale snapshot.
+  // The 60ms defer handles the case where sourceFilter and scrollToItemKey
+  // update in separate React flushes.
   useEffect(() => {
-    if (!scrollToItemKey || filteredRows.length === 0) return
-    const idx = filteredRows.findIndex(r => rowKey(r) === scrollToItemKey)
-    if (idx < 0 || !parentRef.current) return
-    const el = parentRef.current
-    const targetOffset = idx * ROW_HEIGHT
-    const center = targetOffset - el.clientHeight / 2 + ROW_HEIGHT / 2
-    el.scrollTop = Math.max(0, center)
-  }, [scrollToItemKey, filteredRows])
+    if (!scrollToItemKey) return
+    function doScroll() {
+      const rows = filteredRowsRef.current
+      const idx = rows.findIndex(r => rowKey(r) === scrollToItemKey)
+      if (idx < 0 || !parentRef.current) return
+      const el = parentRef.current
+      el.scrollTop = Math.max(0, idx * ROW_HEIGHT - el.clientHeight / 2 + ROW_HEIGHT / 2)
+    }
+    doScroll()
+    const t = setTimeout(doScroll, 60)
+    return () => clearTimeout(t)
+  }, [scrollToItemKey])
 
   const src = SOURCES[effectiveSource]
 
