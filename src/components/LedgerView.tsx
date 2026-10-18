@@ -191,8 +191,7 @@ export function LedgerView({
   const [selectedRow, setSelectedRow] = useState<string | null>(null)
 
   const parentRef = useRef<HTMLDivElement>(null)
-  // Always-current ref so scroll effect never reads stale filteredRows
-  const filteredRowsRef = useRef(filteredRows)
+  const filteredRowsRef = useRef<LedgerRow[]>([])
 
   // Use 'bank' as fallback if sourceFilter is 'all' (should not happen with new initial state)
   const effectiveSource: Source = sourceFilter === 'all' ? 'bank' : sourceFilter
