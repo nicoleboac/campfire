@@ -5,6 +5,25 @@ import type { Resolution, useReconcile } from '../hooks/useReconcile'
 import { cls, tokens } from '../theme/tokens'
 import { MatchDetail } from './MatchDetail'
 import { CreateEntryForm } from './CreateEntryForm'
+import { AUTO_MATCHED_PAIRS } from '../data/autoMatched'
+
+// Returns the 1-based line number of an item in the ledger for its source,
+// using the same Sep 2026 date window and sort order as LedgerView.
+function ledgerLineNumber(itemKey: string, source: Source, allItems: Item[]): number | null {
+  const rows: { date: string; key: string }[] = []
+  for (const pair of AUTO_MATCHED_PAIRS) {
+    if (pair.source !== source) continue
+    rows.push({ date: pair.sourceItem.date, key: pair.id })
+  }
+  for (const item of allItems) {
+    if (item.source !== source) continue
+    rows.push({ date: item.date, key: item.key })
+  }
+  rows.sort((a, b) => a.date.localeCompare(b.date))
+  const filtered = rows.filter(r => r.date >= '2026-09-01' && r.date <= '2026-09-30')
+  const idx = filtered.findIndex(r => r.key === itemKey)
+  return idx >= 0 ? idx + 1 : null
+}
 
 interface Props {
   activeSuggestions: Suggestion[]
@@ -251,25 +270,33 @@ function IssueSuggestionCard({
 
             {/* Items summary */}
             <div className="flex flex-wrap gap-2 mb-2">
-              {suggestionItems.map(item => (
-                <div key={item.key} className="flex items-center gap-1.5">
-                  <span className={`text-xs px-1.5 py-0.5 rounded ${sideBadgeCls[item.side] || 'bg-gray-50 text-gray-600'}`}>
-                    {item.side}
-                  </span>
-                  <span className="text-sm text-gray-700 truncate max-w-[180px]">
-                    {item.reference ? (
-                      <><span className="font-medium text-gray-800">{item.reference}</span> — {item.description}</>
-                    ) : item.description}
-                  </span>
-                  <span className={`text-sm font-medium ${item.amount >= 0 ? 'text-green-600' : 'text-red-600'}`}>
-                    {fmt(item.amount)}
-                  </span>
-                  <span className="text-xs text-gray-400">{fmtDate(item.date)}</span>
-                  {item.meta?.cardholder && (
-                    <span className="text-xs text-gray-400">{item.meta.cardholder} ···{item.meta.cardLast4}</span>
-                  )}
-                </div>
-              ))}
+              {suggestionItems.map(item => {
+                const lineNum = ledgerLineNumber(item.key, suggestion.source, allItems)
+                return (
+                  <div key={item.key} className="flex items-center gap-1.5">
+                    <span className={`text-xs px-1.5 py-0.5 rounded ${sideBadgeCls[item.side] || 'bg-gray-50 text-gray-600'}`}>
+                      {item.side}
+                    </span>
+                    {lineNum !== null && (
+                      <span className="text-xs px-1.5 py-0.5 rounded bg-gray-100 text-gray-500 font-mono">
+                        line {lineNum}
+                      </span>
+                    )}
+                    <span className="text-sm text-gray-700 truncate max-w-[180px]">
+                      {item.reference ? (
+                        <><span className="font-medium text-gray-800">{item.reference}</span> — {item.description}</>
+                      ) : item.description}
+                    </span>
+                    <span className={`text-sm font-medium ${item.amount >= 0 ? 'text-green-600' : 'text-red-600'}`}>
+                      {fmt(item.amount)}
+                    </span>
+                    <span className="text-xs text-gray-400">{fmtDate(item.date)}</span>
+                    {item.meta?.cardholder && (
+                      <span className="text-xs text-gray-400">{item.meta.cardholder} ···{item.meta.cardLast4}</span>
+                    )}
+                  </div>
+                )
+              })}
             </div>
 
             {/* Confidence + reason chips */}
@@ -424,7 +451,7 @@ interface OrphanCardProps {
   onResolve: (resolution: Omit<Resolution, 'timestamp'>) => void
 }
 
-function OrphanCard({ item, allItems: _allItems, isSelected, onSelect, onResolve }: OrphanCardProps) {
+function OrphanCard({ item, allItems, isSelected, onSelect, onResolve }: OrphanCardProps) {
   const [showCreateEntry, setShowCreateEntry] = useState(false)
   const [showFlagForm, setShowFlagForm] = useState(false)
   const [showSuspenseForm, setShowSuspenseForm] = useState(false)
@@ -500,6 +527,12 @@ function OrphanCard({ item, allItems: _allItems, isSelected, onSelect, onResolve
               <span className={`text-xs px-1.5 py-0.5 rounded ${sideBadgeCls[item.side] || 'bg-gray-50 text-gray-600'}`}>
                 {item.side}
               </span>
+              {(() => {
+                const ln = ledgerLineNumber(item.key, item.source, allItems)
+                return ln !== null ? (
+                  <span className="text-xs px-1.5 py-0.5 rounded bg-gray-100 text-gray-500 font-mono">line {ln}</span>
+                ) : null
+              })()}
               <span className="text-xs text-gray-400">{fmtDate(item.date)}</span>
               {item.reference && <span className="text-xs text-gray-500 font-medium">{item.reference}</span>}
               {item.meta?.cardholder && (
