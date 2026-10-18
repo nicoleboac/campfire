@@ -238,15 +238,15 @@ export function LedgerView({
   })
 
   // Scroll to item when selectedItemKey changes from the right panel.
-  // rAF defers until after the virtualizer re-renders for the new source.
+  // Direct scrollTop is reliable regardless of virtualizer state.
   useEffect(() => {
     if (!scrollToItemKey || filteredRows.length === 0) return
     const idx = filteredRows.findIndex(r => rowKey(r) === scrollToItemKey)
-    if (idx < 0) return
-    const raf = requestAnimationFrame(() => {
-      virtualizer.scrollToIndex(idx, { align: 'center' })
-    })
-    return () => cancelAnimationFrame(raf)
+    if (idx < 0 || !parentRef.current) return
+    const el = parentRef.current
+    const targetOffset = idx * ROW_HEIGHT
+    const center = targetOffset - el.clientHeight / 2 + ROW_HEIGHT / 2
+    el.scrollTop = Math.max(0, center)
   }, [scrollToItemKey, filteredRows])
 
   const src = SOURCES[effectiveSource]
