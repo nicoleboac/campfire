@@ -1,10 +1,11 @@
 import { useState } from 'react'
 import { CREATE_ENTRY_DEFAULTS, SOURCES } from '../data/seed'
 import type { Item, Suggestion, Source } from '../data/seed'
-import type { Resolution } from '../hooks/useReconcile'
+import type { Resolution, useReconcile } from '../hooks/useReconcile'
 import { cls } from '../theme/tokens'
 import { SuggestionCard } from './SuggestionCard'
 import { CreateEntryForm } from './CreateEntryForm'
+import { ItemContext } from './ItemContext'
 
 interface Props {
   items: Item[]
@@ -17,6 +18,8 @@ interface Props {
   onResolve: (resolution: Omit<Resolution, 'timestamp'>) => void
   onReject: (suggestionId: string) => void
   onSetSourceFilter: (f: Source | 'all') => void
+  getRelatedItems: ReturnType<typeof useReconcile>['getRelatedItems']
+  onViewInLedger: (item: Item) => void
 }
 
 function fmt(n: number) {
@@ -66,8 +69,20 @@ export function WorkQueue({
   onResolve,
   onReject,
   onSetSourceFilter,
+  getRelatedItems,
+  onViewInLedger,
 }: Props) {
   const [activeAction, setActiveAction] = useState<ItemAction>(null)
+  const [expandedContextKeys, setExpandedContextKeys] = useState<Set<string>>(new Set())
+
+  function toggleContext(key: string) {
+    setExpandedContextKeys(prev => {
+      const next = new Set(prev)
+      if (next.has(key)) next.delete(key)
+      else next.add(key)
+      return next
+    })
+  }
   const [flagNote, setFlagNote] = useState('')
   const [flagAssignee, setFlagAssignee] = useState('')
   const [suspenseNote, setSuspenseNote] = useState('')
@@ -331,6 +346,8 @@ export function WorkQueue({
   function renderOrphanItem(item: Item) {
     const isSourceSide = item.side === 'bank' || item.side === 'stripe' || item.side === 'payment' || item.side === 'card'
     const isActive = activeAction?.itemKey === item.key
+    const related = getRelatedItems(item)
+    const contextExpanded = expandedContextKeys.has(item.key)
     return (
       <div key={item.key} className="bg-white border border-gray-200 rounded-lg p-3">
         <div className="flex items-start justify-between gap-3">
@@ -369,6 +386,24 @@ export function WorkQueue({
           </div>
         </div>
         {isActive && renderOrphanActions(item)}
+        {related.length > 0 && (
+          <div className="mt-2">
+            <button
+              onClick={() => toggleContext(item.key)}
+              className="text-xs text-gray-400 hover:text-gray-600 transition-colors"
+            >
+              {contextExpanded ? '▲ Hide' : `▼ ${related.length} related`}
+            </button>
+            {contextExpanded && (
+              <ItemContext
+                item={item}
+                getRelatedItems={getRelatedItems}
+                onViewInLedger={onViewInLedger}
+                onMatchInstead={() => {}}
+              />
+            )}
+          </div>
+        )}
       </div>
     )
   }
@@ -426,6 +461,8 @@ export function WorkQueue({
                   items={allItems}
                   onAccept={handleAcceptSuggestion}
                   onReject={onReject}
+                  getRelatedItems={getRelatedItems}
+                  onViewInLedger={onViewInLedger}
                 />
               ))}
             </div>

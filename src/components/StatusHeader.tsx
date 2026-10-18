@@ -1,6 +1,7 @@
 import { useState } from 'react'
 import { SOURCES } from '../data/seed'
 import type { Source } from '../data/seed'
+import { AUTO_MATCHED_COUNT_BY_SOURCE } from '../data/autoMatched'
 import { cls } from '../theme/tokens'
 
 interface PerSourceState {
@@ -29,6 +30,8 @@ const sourceBadgeCls: Record<Source, string> = {
   cards:       'bg-orange-100 text-orange-700',
 }
 
+const TOTAL_AUTO_MATCHED = Object.values(AUTO_MATCHED_COUNT_BY_SOURCE).reduce((a, b) => a + b, 0)
+
 export function StatusHeader({ perSource, resolvedCount, totalItems }: Props) {
   const [autoMatchOpen, setAutoMatchOpen] = useState(false)
 
@@ -51,7 +54,7 @@ export function StatusHeader({ perSource, resolvedCount, totalItems }: Props) {
               className="text-xs text-gray-500 hover:text-gray-700 flex items-center gap-1"
             >
               <span className="w-2 h-2 rounded-full bg-green-400 inline-block" />
-              1,286 auto-matched across 4 sources
+              {TOTAL_AUTO_MATCHED.toLocaleString()} auto-matched across 4 sources
               <span className="ml-0.5">{autoMatchOpen ? '▲' : '▼'}</span>
             </button>
             <span className="text-xs text-gray-400">
@@ -63,7 +66,7 @@ export function StatusHeader({ perSource, resolvedCount, totalItems }: Props) {
         {/* Auto-match expanded */}
         {autoMatchOpen && (
           <div className="mb-3 p-3 bg-green-50 border border-green-100 rounded-md text-xs text-green-700">
-            <strong>1,286 transactions</strong> were automatically matched across all 4 sources by amount, date, and payee.
+            <strong>{TOTAL_AUTO_MATCHED.toLocaleString()} transactions</strong> were automatically matched across all 4 sources by amount, date, and payee.
             No action required. <button className="underline" onClick={() => setAutoMatchOpen(false)}>Dismiss</button>
           </div>
         )}

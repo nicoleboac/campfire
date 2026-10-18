@@ -1,3 +1,4 @@
+import { useState, useEffect } from 'react'
 import { useReconcile } from './hooks/useReconcile'
 import type { Resolution } from './hooks/useReconcile'
 import type { Item } from './data/seed'
@@ -119,6 +120,20 @@ function ResolvedView({
 
 function App() {
   const rec = useReconcile()
+  const [scrollToItem, setScrollToItem] = useState<Item | null>(null)
+
+  // Clear scrollToItem after 2 seconds
+  useEffect(() => {
+    if (!scrollToItem) return
+    const timer = setTimeout(() => setScrollToItem(null), 2000)
+    return () => clearTimeout(timer)
+  }, [scrollToItem])
+
+  function handleViewInLedger(item: Item) {
+    setScrollToItem(item)
+    rec.setView('ledger')
+    rec.setSourceFilter(item.source)
+  }
 
   return (
     <div className="min-h-screen bg-gray-50">
@@ -145,7 +160,7 @@ function App() {
               >
                 {v === 'queue' && `Work Queue (${rec.unresolvedItems.length})`}
                 {v === 'resolved' && `Resolved (${rec.resolvedCount})`}
-                {v === 'ledger' && 'Ledger'}
+                {v === 'ledger' && 'Full Ledger'}
                 {v === 'finish' && 'Finish'}
               </button>
             ))}
@@ -182,6 +197,8 @@ function App() {
             onResolve={rec.resolve}
             onReject={rec.rejectSuggestion}
             onSetSourceFilter={rec.setSourceFilter}
+            getRelatedItems={rec.getRelatedItems}
+            onViewInLedger={handleViewInLedger}
           />
         )}
 
@@ -195,10 +212,17 @@ function App() {
 
         {rec.state.view === 'ledger' && (
           <LedgerView
-            seedItems={rec.items}
+            items={rec.unresolvedItems}
             resolutions={rec.resolutions}
             resolvedItemIds={rec.resolvedItemIds}
+            sourceFilter={rec.state.sourceFilter === 'all' ? 'all' : rec.state.sourceFilter}
+            onSourceFilterChange={rec.setSourceFilter}
             searchQuery={rec.state.searchQuery}
+            onUnmatch={rec.unmatchPair}
+            onResolve={rec.resolve}
+            scrollToItemKey={scrollToItem?.key}
+            getRelatedItems={rec.getRelatedItems}
+            unmatchedPairIds={rec.state.unmatchedPairIds}
           />
         )}
 

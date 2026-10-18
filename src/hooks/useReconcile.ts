@@ -1,6 +1,8 @@
 import { useState, useCallback, useMemo } from 'react'
 import { ITEMS, SUGGESTIONS, SOURCES } from '../data/seed'
 import type { Item, Suggestion, Source } from '../data/seed'
+import { AUTO_MATCHED_PAIRS } from '../data/autoMatched'
+import type { AutoMatchedPair } from '../data/autoMatched'
 import {
   adjustedSourceBalance,
   adjustedLedgerBalance,
@@ -50,6 +52,7 @@ export interface AppState {
   view: 'queue' | 'resolved' | 'ledger' | 'finish'
   isLocked: boolean
   sentForReview: boolean
+  unmatchedPairIds: string[]
 }
 
 function initialState(): AppState {
@@ -64,6 +67,7 @@ function initialState(): AppState {
     view: 'queue',
     isLocked: false,
     sentForReview: false,
+    unmatchedPairIds: [],
   }
 }
 
@@ -216,10 +220,24 @@ export function useReconcile() {
   }, [addToast])
 
   const undo = useCallback((resolutionId: string) => {
-    setState(prev => ({
-      ...prev,
-      resolutions: prev.resolutions.filter(r => r.id !== resolutionId),
-    }))
+    if (resolutionId.startsWith('unmatch-')) {
+      const pairId = resolutionId.slice('unmatch-'.length)
+      const pair = AUTO_MATCHED_PAIRS.find(p => p.id === pairId)
+      if (!pair) return
+      setState(prev => ({
+        ...prev,
+        unmatchedPairIds: prev.unmatchedPairIds.filter(id => id !== pairId),
+        suggestions: prev.suggestions.filter(s => s.id !== `ephemeral-${pairId}`),
+        items: prev.items.filter(
+          i => i.key !== pair.sourceItem.key && i.key !== pair.ledgerItem.key
+        ),
+      }))
+    } else {
+      setState(prev => ({
+        ...prev,
+        resolutions: prev.resolutions.filter(r => r.id !== resolutionId),
+      }))
+    }
   }, [])
 
   const rejectSuggestion = useCallback((suggestionId: string) => {
@@ -247,6 +265,138 @@ export function useReconcile() {
   const finish = useCallback(() => {
     setState(prev => ({ ...prev, isLocked: true, sentForReview: true }))
   }, [])
+
+  const unmatchPair = useCallback((pairId: string) => {
+    const pair = AUTO_MATCHED_PAIRS.find(p => p.id === pairId)
+    if (!pair) return
+
+    const ephemeralSuggestion: Suggestion = {
+      id: `ephemeral-${pairId}`,
+      source: pair.source,
+      itemKeys: [pair.sourceItem.key, pair.ledgerItem.key],
+      action: 'match',
+      confidence: 'high',
+      reason: 'Previously auto-matched',
+      reasonChips: ['Auto-matched', 'Unmatched by user'],
+    }
+
+    setState(prev => ({
+      ...prev,
+      unmatchedPairIds: [...prev.unmatchedPairIds, pairId],
+      suggestions: [...prev.suggestions, ephemeralSuggestion],
+      items: [...prev.items, pair.sourceItem, pair.ledgerItem],
+    }))
+    addToast('Unmatched pair — undo to restore', `unmatch-${pairId}`)
+  }, [addToast])
+
+  const rematchPair = useCallback((pairId: string) => {
+    const pair = AUTO_MATCHED_PAIRS.find(p => p.id === pairId)
+    if (!pair) return
+    setState(prev => ({
+      ...prev,
+      unmatchedPairIds: prev.unmatchedPairIds.filter(id => id !== pairId),
+      suggestions: prev.suggestions.filter(s => s.id !== `ephemeral-${pairId}`),
+      items: prev.items.filter(
+        i => i.key !== pair.sourceItem.key && i.key !== pair.ledgerItem.key
+      ),
+    }))
+  }, [])
+
+  // ── getRelatedItems ──────────────────────────────────────────────────────────
+
+  function extractCounterparty(description: string): string | null {
+    const KEYWORDS = ['Northwind', 'Globex', 'Blue Bottle', 'Figma', 'Initech', 'AWS', 'Gusto', 'Stripe', 'Brightline',
+      'Acme', 'Delta Systems', 'Helix', 'Nexus', 'Apex', 'Meridian', 'Vertex', 'Hooli', 'WeWork',
+      'Hartford', 'Starbucks', 'Philz', 'Sweetgreen', 'Chipotle', 'GitHub', 'Notion', 'Zoom', 'Loom', 'Miro', 'Linear',
+      'United Airlines', 'Delta Air', 'Lyft', 'Uber', 'Marriott', 'Hilton', 'Staples', 'Amazon', 'Best Buy', 'Office Depot']
+    const lower = description.toLowerCase()
+    for (const kw of KEYWORDS) {
+      if (lower.includes(kw.toLowerCase())) return kw.toLowerCase()
+    }
+    return null
+  }
+
+  const getRelatedItems = useCallback((item: Item): Array<{
+    item: Item | AutoMatchedPair['sourceItem'] | AutoMatchedPair['ledgerItem']
+    pairId?: string
+    isMatched: boolean
+    matchedWith?: string
+  }> => {
+    const itemDate = new Date(item.date + 'T00:00:00').getTime()
+    const itemAmt = Math.abs(item.amount)
+    const itemKw = extractCounterparty(item.description)
+
+    const candidates: Array<{
+      item: Item
+      pairId?: string
+      isMatched: boolean
+      matchedWith?: string
+      score: number
+    }> = []
+
+    // Search unmatched items in state
+    for (const candidate of state.items) {
+      if (candidate.key === item.key) continue
+      if (candidate.source !== item.source) continue
+
+      const candDate = new Date(candidate.date + 'T00:00:00').getTime()
+      const daysDiff = Math.abs((candDate - itemDate) / (1000 * 60 * 60 * 24))
+      const candAmt = Math.abs(candidate.amount)
+      const amtDiff = itemAmt > 0 ? Math.abs(candAmt - itemAmt) / itemAmt : 1
+      const candKw = extractCounterparty(candidate.description)
+
+      let score = 0
+      if (itemKw && candKw && itemKw === candKw) score += 10
+      if (daysDiff <= 5) score += 3
+      if (amtDiff <= 0.1) score += 5
+
+      if (score > 0) {
+        candidates.push({ item: candidate, isMatched: false, score })
+      }
+    }
+
+    // Search AUTO_MATCHED_PAIRS (flat items from pairs)
+    for (const pair of AUTO_MATCHED_PAIRS) {
+      if (state.unmatchedPairIds.includes(pair.id)) continue
+      if (pair.source !== item.source) continue
+
+      for (const pairItem of [pair.sourceItem, pair.ledgerItem]) {
+        if (pairItem.key === item.key) continue
+
+        const candDate = new Date(pairItem.date + 'T00:00:00').getTime()
+        const daysDiff = Math.abs((candDate - itemDate) / (1000 * 60 * 60 * 24))
+        const candAmt = Math.abs(pairItem.amount)
+        const amtDiff = itemAmt > 0 ? Math.abs(candAmt - itemAmt) / itemAmt : 1
+        const candKw = extractCounterparty(pairItem.description)
+
+        let score = 0
+        if (itemKw && candKw && itemKw === candKw) score += 10
+        if (daysDiff <= 5) score += 3
+        if (amtDiff <= 0.1) score += 5
+
+        if (score > 0) {
+          const otherItem = pairItem.key === pair.sourceItem.key ? pair.ledgerItem : pair.sourceItem
+          candidates.push({
+            item: pairItem,
+            pairId: pair.id,
+            isMatched: true,
+            matchedWith: otherItem.reference || otherItem.description,
+            score,
+          })
+        }
+      }
+    }
+
+    // Sort: counterparty matches first, then by score
+    candidates.sort((a, b) => b.score - a.score)
+
+    return candidates.slice(0, 5).map(c => ({
+      item: c.item,
+      pairId: c.pairId,
+      isMatched: c.isMatched,
+      matchedWith: c.matchedWith,
+    }))
+  }, [state.items, state.unmatchedPairIds])
 
   // Can finish when: all 4 sources have unexplained === 0 and openCount === 0
   const sources = (['bank', 'stripe', 'receivables', 'cards'] as Source[])
@@ -294,5 +444,8 @@ export function useReconcile() {
     dismissToast,
     canFinish,
     finishBlockReason,
+    unmatchPair,
+    rematchPair,
+    getRelatedItems,
   }
 }

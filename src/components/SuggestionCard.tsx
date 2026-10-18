@@ -3,12 +3,16 @@ import type { Suggestion, Item, Source } from '../data/seed'
 import { SOURCES } from '../data/seed'
 import { cls, tokens } from '../theme/tokens'
 import { MatchDetail } from './MatchDetail'
+import { ItemContext } from './ItemContext'
+import type { useReconcile } from '../hooks/useReconcile'
 
 interface Props {
   suggestion: Suggestion
   items: Item[]
   onAccept: (suggestion: Suggestion, adjustmentOverride?: { amount: number; account: string; accountCode: string; description: string }, note?: string) => void
   onReject: (suggestionId: string) => void
+  getRelatedItems?: ReturnType<typeof useReconcile>['getRelatedItems']
+  onViewInLedger?: (item: Item) => void
 }
 
 function fmt(n: number) {
@@ -37,10 +41,11 @@ const sideBadgeCls: Record<string, string> = {
   card:        'bg-orange-50 text-orange-700',
 }
 
-export function SuggestionCard({ suggestion, items, onAccept, onReject }: Props) {
+export function SuggestionCard({ suggestion, items, onAccept, onReject, getRelatedItems, onViewInLedger }: Props) {
   const [showDetail, setShowDetail] = useState(false)
   const [showVoidForm, setShowVoidForm] = useState(false)
   const [voidReason, setVoidReason] = useState('Duplicate of already-matched entry')
+  const [showContext, setShowContext] = useState(false)
 
   const suggestionItems = suggestion.itemKeys.map(key => items.find(i => i.key === key)!).filter(Boolean)
 
@@ -207,6 +212,35 @@ export function SuggestionCard({ suggestion, items, onAccept, onReject }: Props)
               </button>
             </div>
           </div>
+        </div>
+      )}
+
+      {/* Related items context */}
+      {getRelatedItems && suggestionItems.length > 0 && (
+        <div className="px-4 pb-3 pt-0">
+          {(() => {
+            const firstItem = suggestionItems[0]
+            const related = getRelatedItems(firstItem)
+            if (related.length === 0) return null
+            return (
+              <div>
+                <button
+                  onClick={() => setShowContext(v => !v)}
+                  className="text-xs text-gray-400 hover:text-gray-600 transition-colors"
+                >
+                  {showContext ? '▲ Hide related' : `▼ ${related.length} related`}
+                </button>
+                {showContext && (
+                  <ItemContext
+                    item={firstItem}
+                    getRelatedItems={getRelatedItems}
+                    onViewInLedger={onViewInLedger || (() => {})}
+                    onMatchInstead={() => {}}
+                  />
+                )}
+              </div>
+            )
+          })()}
         </div>
       )}
     </div>

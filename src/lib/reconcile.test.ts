@@ -6,6 +6,8 @@ import {
   round2,
 } from './reconcile'
 import { SOURCES } from '../data/seed'
+import { AUTO_MATCHED_PAIRS } from '../data/autoMatched'
+import type { Source } from '../data/seed'
 
 describe('round2', () => {
   it('rounds to 2 decimal places', () => {
@@ -157,5 +159,28 @@ describe('cards reconciliation', () => {
     }
     expect(adjustedLedgerBalance(s)).toBe(23_914.62)
     expect(unexplainedDifference(s)).toBe(0)
+  })
+})
+
+// ── Auto-matched pairs ────────────────────────────────────────────────────────
+
+describe('auto-matched pairs', () => {
+  it('net to zero per source', () => {
+    // Each pair is constructed with sourceItem.amount === ledgerItem.amount.
+    // This means every source-side transaction has an exactly matching ledger entry.
+    // The per-source "net" is: sum(source amounts) - sum(ledger amounts) === 0.
+    const sources: Source[] = ['bank', 'stripe', 'receivables', 'cards']
+    for (const src of sources) {
+      const pairsForSource = AUTO_MATCHED_PAIRS.filter(p => p.source === src)
+      // Every pair must have equal source and ledger amounts
+      for (const pair of pairsForSource) {
+        expect(pair.sourceItem.amount).toBeCloseTo(pair.ledgerItem.amount, 10)
+      }
+      // The per-source sum of (sourceAmount - ledgerAmount) must be 0
+      const diff = pairsForSource.reduce(
+        (acc, p) => acc + (p.sourceItem.amount - p.ledgerItem.amount), 0
+      )
+      expect(round2(diff)).toBe(0)
+    }
   })
 })
