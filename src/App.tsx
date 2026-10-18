@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useRef, useCallback } from 'react'
 import { useReconcile } from './hooks/useReconcile'
 import { AppHeader } from './components/AppHeader'
 import { LedgerView } from './components/LedgerView'
@@ -9,7 +9,23 @@ function App() {
   const rec = useReconcile()
   const [selectedItemKey, setSelectedItemKey] = useState<string | null>(null)
 
-  // Clear selectedItemKey after 2 seconds of highlight
+  // Holds the scroll function registered by LedgerView on mount
+  const ledgerScrollFnRef = useRef<((key: string) => void) | null>(null)
+  const registerScroll = useCallback((fn: (key: string) => void) => {
+    ledgerScrollFnRef.current = fn
+  }, [])
+
+  // When an issue card is selected, switch source then call the ledger scroll
+  const handleSelectItem = useCallback((key: string | null) => {
+    setSelectedItemKey(key)
+    if (!key) return
+    // 80ms lets React commit the source-filter re-render before we scroll
+    setTimeout(() => {
+      ledgerScrollFnRef.current?.(key)
+    }, 80)
+  }, [])
+
+  // Clear highlight after 2 seconds
   useEffect(() => {
     if (!selectedItemKey) return
     const timer = setTimeout(() => setSelectedItemKey(null), 2000)
@@ -50,12 +66,13 @@ function App() {
             onResolve={rec.resolve}
             activeSuggestions={[]}
             scrollToItemKey={selectedItemKey ?? undefined}
+            registerScroll={registerScroll}
             getRelatedItems={rec.getRelatedItems}
             unmatchedPairIds={rec.state.unmatchedPairIds}
             allItems={rec.items}
             onRowClick={(key) => {
-              if (key) setSelectedItemKey(key)
-              else setSelectedItemKey(null)
+              if (key) handleSelectItem(key)
+              else handleSelectItem(null)
             }}
           />
         </div>
@@ -73,7 +90,7 @@ function App() {
             getRelatedItems={rec.getRelatedItems}
             searchQuery={rec.state.searchQuery}
             onSearch={rec.setSearch}
-            onSelectItem={setSelectedItemKey}
+            onSelectItem={handleSelectItem}
             selectedItemKey={selectedItemKey}
             resolvedCount={rec.resolvedCount}
             totalItems={rec.totalItems}

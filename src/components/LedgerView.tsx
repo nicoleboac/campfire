@@ -18,6 +18,7 @@ interface Props {
   onResolve: (resolution: Omit<Resolution, 'timestamp'>) => void
   activeSuggestions: never[]    // kept for prop compat but unused
   scrollToItemKey?: string
+  registerScroll?: (fn: (key: string) => void) => void
   getRelatedItems: ReturnType<typeof useReconcile>['getRelatedItems']
   unmatchedPairIds: string[]
   allItems: Item[]
@@ -181,6 +182,7 @@ export function LedgerView({
   onUnmatch,
   onResolve: _onResolve,
   scrollToItemKey,
+  registerScroll,
   unmatchedPairIds,
   onRowClick,
 }: Props) {
@@ -240,23 +242,16 @@ export function LedgerView({
     overscan: 10,
   })
 
-  // Scroll the ledger to the highlighted item.
-  // filteredRowsRef is updated every render so we never read a stale snapshot.
-  // The 60ms defer handles the case where sourceFilter and scrollToItemKey
-  // update in separate React flushes.
+  // Register an imperative scroll function so App.tsx can call it directly.
+  // Reads filteredRowsRef.current at call-time, never stale.
   useEffect(() => {
-    if (!scrollToItemKey) return
-    function doScroll() {
-      const rows = filteredRowsRef.current
-      const idx = rows.findIndex(r => rowKey(r) === scrollToItemKey)
+    registerScroll?.((key: string) => {
+      const idx = filteredRowsRef.current.findIndex(r => rowKey(r) === key)
       if (idx < 0 || !parentRef.current) return
       const el = parentRef.current
       el.scrollTop = Math.max(0, idx * ROW_HEIGHT - el.clientHeight / 2 + ROW_HEIGHT / 2)
-    }
-    doScroll()
-    const t = setTimeout(doScroll, 60)
-    return () => clearTimeout(t)
-  }, [scrollToItemKey])
+    })
+  }, [registerScroll])
 
   const src = SOURCES[effectiveSource]
 
