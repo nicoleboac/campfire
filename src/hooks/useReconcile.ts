@@ -63,7 +63,7 @@ function initialState(): AppState {
     rejectedPairs: [],
     toasts: [],
     searchQuery: '',
-    sourceFilter: 'all',
+    sourceFilter: 'bank' as Source | 'all',
     view: 'queue',
     isLocked: false,
     sentForReview: false,
