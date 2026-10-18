@@ -243,13 +243,16 @@ export function LedgerView({
   })
 
   // Register an imperative scroll function so App.tsx can call it directly.
-  // Reads filteredRowsRef.current at call-time, never stale.
   useEffect(() => {
     registerScroll?.((key: string) => {
-      const idx = filteredRowsRef.current.findIndex(r => rowKey(r) === key)
+      const rows = filteredRowsRef.current
+      const idx = rows.findIndex(r => rowKey(r) === key)
+      console.log('[LedgerScroll] key:', key, 'idx:', idx, 'rows:', rows.length, 'parentRef:', !!parentRef.current)
       if (idx < 0 || !parentRef.current) return
       const el = parentRef.current
-      el.scrollTop = Math.max(0, idx * ROW_HEIGHT - el.clientHeight / 2 + ROW_HEIGHT / 2)
+      const top = Math.max(0, idx * ROW_HEIGHT - el.clientHeight / 2 + ROW_HEIGHT / 2)
+      console.log('[LedgerScroll] setting scrollTop to', top, '(clientHeight:', el.clientHeight, ')')
+      el.scrollTop = top
     })
   }, [registerScroll])
 

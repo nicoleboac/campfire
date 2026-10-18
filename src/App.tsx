@@ -19,8 +19,9 @@ function App() {
   const handleSelectItem = useCallback((key: string | null) => {
     setSelectedItemKey(key)
     if (!key) return
-    // 80ms lets React commit the source-filter re-render before we scroll
+    console.log('[handleSelectItem] key:', key, 'scrollFn set:', !!ledgerScrollFnRef.current)
     setTimeout(() => {
+      console.log('[handleSelectItem] firing scroll for', key, 'scrollFn:', !!ledgerScrollFnRef.current)
       ledgerScrollFnRef.current?.(key)
     }, 80)
   }, [])
