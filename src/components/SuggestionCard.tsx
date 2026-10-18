@@ -6,7 +6,7 @@ import { MatchDetail } from './MatchDetail'
 interface Props {
   suggestion: Suggestion
   items: LineItem[]
-  onAccept: (suggestion: Suggestion, adjustmentOverride?: { amount: number; account: string; accountCode: string; description: string }) => void
+  onAccept: (suggestion: Suggestion, adjustmentOverride?: { amount: number; account: string; accountCode: string; description: string }, note?: string) => void
   onReject: (suggestionId: string) => void
 }
 
@@ -22,6 +22,8 @@ function fmtDate(d: string) {
 
 export function SuggestionCard({ suggestion, items, onAccept, onReject }: Props) {
   const [showDetail, setShowDetail] = useState(false)
+  const [showVoidForm, setShowVoidForm] = useState(false)
+  const [voidReason, setVoidReason] = useState('Duplicate of already-matched entry')
 
   const bankItems = suggestion.bankIds.map(id => items.find(i => i.id === id)!).filter(Boolean)
   const ledgerItems = suggestion.ledgerIds.map(id => items.find(i => i.id === id)!).filter(Boolean)
@@ -41,6 +43,8 @@ export function SuggestionCard({ suggestion, items, onAccept, onReject }: Props)
   function handleAccept() {
     if (suggestion.action === 'match-with-adjustment' || suggestion.action === 'create-entry') {
       setShowDetail(true)
+    } else if (suggestion.action === 'void-duplicate') {
+      setShowVoidForm(true)
     } else {
       onAccept(suggestion)
     }
@@ -120,6 +124,50 @@ export function SuggestionCard({ suggestion, items, onAccept, onReject }: Props)
           }}
           onCancel={() => setShowDetail(false)}
         />
+      )}
+
+      {/* Void duplicate panel */}
+      {showVoidForm && (
+        <div className="px-4 pb-4 pt-0">
+          <div className="p-3 bg-red-50 border border-red-200 rounded-md">
+            <div className="text-xs font-medium text-red-700 mb-2">Void Duplicate Entry</div>
+            {ledgerItems[0] && (
+              <div className="bg-white border border-red-100 rounded p-2 mb-2">
+                <div className="text-xs text-gray-500">{ledgerItems[0].id} · {fmtDate(ledgerItems[0].date)}</div>
+                <div className="text-sm text-gray-800">{ledgerItems[0].description}</div>
+                <div className={`text-sm font-semibold ${ledgerItems[0].amount >= 0 ? 'text-green-600' : 'text-red-600'}`}>
+                  {fmt(ledgerItems[0].amount)}
+                </div>
+              </div>
+            )}
+            <div className="mb-2">
+              <label className={cls.label}>Reason</label>
+              <input
+                className={cls.input}
+                value={voidReason}
+                onChange={e => setVoidReason(e.target.value)}
+                placeholder="Reason for voiding"
+              />
+            </div>
+            <div className="flex gap-2">
+              <button
+                onClick={() => {
+                  setShowVoidForm(false)
+                  onAccept(suggestion, undefined, voidReason)
+                }}
+                className="text-white bg-red-600 hover:bg-red-700 text-xs px-3 py-1.5 rounded font-medium transition-colors"
+              >
+                Void Duplicate
+              </button>
+              <button
+                onClick={() => setShowVoidForm(false)}
+                className={cls.btnGhost}
+              >
+                Cancel
+              </button>
+            </div>
+          </div>
+        </div>
       )}
     </div>
   )

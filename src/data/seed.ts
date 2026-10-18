@@ -173,6 +173,50 @@ export const SUGGESTIONS: Suggestion[] = [
   },
 ]
 
+export interface AutoMatchedItem {
+  id: string
+  side: Side
+  date: string
+  description: string
+  amount: number
+  ref?: string
+}
+
+export const AUTO_MATCHED_ITEMS: AutoMatchedItem[] = [
+  // week 1
+  { id: 'AM-B01', side: 'bank',   date: '2026-09-02', description: 'ACH CLIENT ACME CORP',         amount: 45200.00, ref: 'INV-2261' },
+  { id: 'AM-L01', side: 'ledger', date: '2026-09-02', description: 'Acme Corp — Sep services',      amount: 45200.00, ref: 'INV-2261' },
+  { id: 'AM-B02', side: 'bank',   date: '2026-09-03', description: 'ACH WEWORK SOMA RENT',          amount: -8500.00, ref: 'RENT-SEP' },
+  { id: 'AM-L02', side: 'ledger', date: '2026-09-03', description: 'Office rent — WeWork SOMA',     amount: -8500.00, ref: 'RENT-SEP' },
+  { id: 'AM-B03', side: 'bank',   date: '2026-09-05', description: 'GUSTO PAYROLL ACH',             amount: -67234.50 },
+  { id: 'AM-L03', side: 'ledger', date: '2026-09-05', description: 'Gusto payroll — Sep 5',         amount: -67234.50 },
+  { id: 'AM-B04', side: 'bank',   date: '2026-09-05', description: 'GUSTO PAYROLL TAXES ACH',       amount: -14388.20 },
+  { id: 'AM-L04', side: 'ledger', date: '2026-09-05', description: 'Gusto payroll taxes — Sep 5',   amount: -14388.20 },
+  // week 2
+  { id: 'AM-B05', side: 'bank',   date: '2026-09-09', description: 'STRIPE PAYOUT',                 amount: 12850.00, ref: 'STR-7812' },
+  { id: 'AM-L05', side: 'ledger', date: '2026-09-09', description: 'Stripe payout',                 amount: 12850.00, ref: 'STR-7812' },
+  { id: 'AM-B06', side: 'bank',   date: '2026-09-11', description: 'SLACK TECHNOLOGIES ACH',        amount: -420.00 },
+  { id: 'AM-L06', side: 'ledger', date: '2026-09-11', description: 'Slack team plan — Sep',         amount: -420.00 },
+  { id: 'AM-B07', side: 'bank',   date: '2026-09-12', description: 'INCOMING WIRE DELTA SYSTEMS',   amount: 28000.00, ref: 'INV-2265' },
+  { id: 'AM-L07', side: 'ledger', date: '2026-09-12', description: 'Delta Systems payment',         amount: 28000.00, ref: 'INV-2265' },
+  // week 3
+  { id: 'AM-B08', side: 'bank',   date: '2026-09-15', description: 'OFFICE DEPOT ACH',              amount: -342.18 },
+  { id: 'AM-L08', side: 'ledger', date: '2026-09-15', description: 'Office supplies',               amount: -342.18 },
+  { id: 'AM-B09', side: 'bank',   date: '2026-09-16', description: 'HARTFORD INSURANCE ACH',        amount: -1200.00, ref: 'POL-0824' },
+  { id: 'AM-L09', side: 'ledger', date: '2026-09-16', description: 'Hartford — general liability',  amount: -1200.00, ref: 'POL-0824' },
+  { id: 'AM-B10', side: 'bank',   date: '2026-09-19', description: 'GUSTO PAYROLL ACH',             amount: -67234.50 },
+  { id: 'AM-L10', side: 'ledger', date: '2026-09-19', description: 'Gusto payroll — Sep 19',        amount: -67234.50 },
+  // week 4
+  { id: 'AM-B11', side: 'bank',   date: '2026-09-22', description: 'STRIPE PAYOUT',                 amount: 15320.00, ref: 'STR-7941' },
+  { id: 'AM-L11', side: 'ledger', date: '2026-09-22', description: 'Stripe payout',                 amount: 15320.00, ref: 'STR-7941' },
+  { id: 'AM-B12', side: 'bank',   date: '2026-09-23', description: 'DATADOG INC ACH',               amount: -890.00 },
+  { id: 'AM-L12', side: 'ledger', date: '2026-09-23', description: 'Datadog monitoring — Sep',      amount: -890.00 },
+  { id: 'AM-B13', side: 'bank',   date: '2026-09-25', description: 'EQUIPMENT LEASE PMT',           amount: -3100.00, ref: 'LEASE-14' },
+  { id: 'AM-L13', side: 'ledger', date: '2026-09-25', description: 'Equipment lease payment',       amount: -3100.00, ref: 'LEASE-14' },
+  { id: 'AM-B14', side: 'bank',   date: '2026-09-26', description: 'INCOMING WIRE HELIX HEALTH',    amount: 18500.00, ref: 'INV-2276' },
+  { id: 'AM-L14', side: 'ledger', date: '2026-09-26', description: 'Helix Health — Sep retainer',   amount: 18500.00, ref: 'INV-2276' },
+]
+
 // Pre-filled create-entry defaults keyed by bank item id
 export const CREATE_ENTRY_DEFAULTS: Record<string, {
   account: string

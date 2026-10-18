@@ -43,7 +43,7 @@ export interface AppState {
   rejectedPairs: string[] // "B5-L4" format
   toasts: ToastMessage[]
   searchQuery: string
-  view: 'queue' | 'resolved' | 'finish'
+  view: 'queue' | 'resolved' | 'ledger' | 'finish'
   isLocked: boolean
   sentForReview: boolean
 }

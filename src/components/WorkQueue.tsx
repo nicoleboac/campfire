@@ -68,7 +68,8 @@ export function WorkQueue({
 
   function handleAcceptSuggestion(
     suggestion: Suggestion,
-    adjustmentOverride?: { amount: number; account: string; accountCode: string; description: string }
+    adjustmentOverride?: { amount: number; account: string; accountCode: string; description: string },
+    note?: string
   ) {
     const adj = adjustmentOverride || suggestion.adjustment
     const itemIds = [...suggestion.bankIds, ...suggestion.ledgerIds]
@@ -94,7 +95,14 @@ export function WorkQueue({
     } else if (suggestion.action === 'create-entry') {
       setActiveAction({ type: 'create-entry', itemId: suggestion.bankIds[0] })
     } else if (suggestion.action === 'void-duplicate') {
-      setActiveAction({ type: 'void', itemId: suggestion.ledgerIds[0] })
+      onResolve({
+        id: `res-${suggestion.id}`,
+        itemIds: suggestion.ledgerIds,
+        suggestionId: suggestion.id,
+        type: 'voided',
+        description: `Voided duplicate entry ${suggestion.ledgerIds.join(', ')}`,
+        note: note || 'Duplicate of already-matched entry',
+      })
     } else if (suggestion.action === 'mark-outstanding') {
       onResolve({
         id: `res-${suggestion.id}`,

@@ -4,6 +4,7 @@ import type { LineItem } from './data/seed'
 import { StatusHeader } from './components/StatusHeader'
 import { WorkQueue } from './components/WorkQueue'
 import { FinishSummary } from './components/FinishSummary'
+import { LedgerView } from './components/LedgerView'
 import { cls } from './theme/tokens'
 import './index.css'
 
@@ -132,7 +133,7 @@ function App() {
       <div className="bg-white border-b border-gray-200">
         <div className="max-w-7xl mx-auto px-6 py-2 flex items-center justify-between gap-4">
           <nav className="flex items-center gap-1">
-            {(['queue', 'resolved', 'finish'] as const).map(v => (
+            {(['queue', 'resolved', 'ledger', 'finish'] as const).map(v => (
               <button
                 key={v}
                 onClick={() => rec.setView(v)}
@@ -144,6 +145,7 @@ function App() {
               >
                 {v === 'queue' && `Work Queue (${rec.unresolvedItems.length})`}
                 {v === 'resolved' && `Resolved (${rec.resolvedCount})`}
+                {v === 'ledger' && 'Ledger'}
                 {v === 'finish' && 'Finish'}
               </button>
             ))}
@@ -186,6 +188,15 @@ function App() {
             resolutions={rec.resolutions}
             items={rec.items}
             onUndo={rec.undo}
+          />
+        )}
+
+        {rec.state.view === 'ledger' && (
+          <LedgerView
+            seedItems={rec.items}
+            resolutions={rec.resolutions}
+            resolvedItemIds={rec.resolvedItemIds}
+            searchQuery={rec.state.searchQuery}
           />
         )}
 
