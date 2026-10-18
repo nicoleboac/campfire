@@ -19,9 +19,7 @@ function App() {
   const handleSelectItem = useCallback((key: string | null) => {
     setSelectedItemKey(key)
     if (!key) return
-    console.log('[handleSelectItem] key:', key, 'scrollFn set:', !!ledgerScrollFnRef.current)
     setTimeout(() => {
-      console.log('[handleSelectItem] firing scroll for', key, 'scrollFn:', !!ledgerScrollFnRef.current)
       ledgerScrollFnRef.current?.(key)
     }, 80)
   }, [])

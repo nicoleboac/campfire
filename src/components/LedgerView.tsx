@@ -245,14 +245,10 @@ export function LedgerView({
   // Register an imperative scroll function so App.tsx can call it directly.
   useEffect(() => {
     registerScroll?.((key: string) => {
-      const rows = filteredRowsRef.current
-      const idx = rows.findIndex(r => rowKey(r) === key)
-      console.log('[LedgerScroll] key:', key, 'idx:', idx, 'rows:', rows.length, 'parentRef:', !!parentRef.current)
+      const idx = filteredRowsRef.current.findIndex(r => rowKey(r) === key)
       if (idx < 0 || !parentRef.current) return
       const el = parentRef.current
-      const top = Math.max(0, idx * ROW_HEIGHT - el.clientHeight / 2 + ROW_HEIGHT / 2)
-      console.log('[LedgerScroll] setting scrollTop to', top, '(clientHeight:', el.clientHeight, ')')
-      el.scrollTop = top
+      el.scrollTop = Math.max(0, idx * ROW_HEIGHT - el.clientHeight / 2 + ROW_HEIGHT / 2)
     })
   }, [registerScroll])
 
@@ -332,7 +328,7 @@ export function LedgerView({
       </div>
 
       {/* Virtualized rows */}
-      <div ref={parentRef} className="flex-1 overflow-auto">
+      <div ref={parentRef} className="flex-1 min-h-0 overflow-auto">
         <div style={{ height: `${virtualizer.getTotalSize()}px`, position: 'relative' }}>
           {virtualizer.getVirtualItems().map(virtualRow => {
             const row = filteredRows[virtualRow.index]
