@@ -25,6 +25,30 @@ function ledgerLineNumber(itemKey: string, source: Source, allItems: Item[]): nu
   return idx >= 0 ? idx + 1 : null
 }
 
+function orphanGuidance(item: Item): string {
+  if (item.source === 'bank') {
+    if (item.side === 'bank')
+      return 'No matching ledger entry found. Create a ledger entry or post to Suspense (2999) with a note.'
+    return 'This check or entry hasn\'t cleared the bank yet. Mark as outstanding if payment was issued but not yet cashed.'
+  }
+  if (item.source === 'stripe') {
+    if (item.side === 'stripe')
+      return 'No clearing entry found. Create an entry to Stripe clearing (1015), or investigate the charge.'
+    return 'No matching Stripe transaction. Check for a timing difference or create a credit memo.'
+  }
+  if (item.source === 'receivables') {
+    if (item.side === 'payment')
+      return 'Unapplied payment. Apply to an open invoice, or post to unearned revenue if no invoice exists.'
+    return 'Invoice is still open. Follow up with the customer, or mark outstanding if payment is expected soon.'
+  }
+  if (item.source === 'cards') {
+    if (item.side === 'card')
+      return 'No expense entry found. Code to the appropriate expense account and request a receipt if missing.'
+    return 'No matching card charge. Verify the entry, or void if it was entered in error.'
+  }
+  return 'Review this item and choose the appropriate action.'
+}
+
 interface Props {
   activeSuggestions: Suggestion[]
   itemsWithoutSuggestion: Item[]
@@ -493,6 +517,7 @@ function OrphanCard({ item, allItems, isSelected, onSelect, onResolve }: OrphanC
                     {lineNum !== null ? `Line ${lineNum} · ` : ''}{fmtDate(item.date)}
                     {item.meta?.cardholder ? ` · ${item.meta.cardholder}` : ''}
                   </div>
+                  <div className="text-sm text-gray-400 italic mt-1">{orphanGuidance(item)}</div>
                 </>
               )
             })()}
