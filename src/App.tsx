@@ -184,60 +184,65 @@ function App() {
       </div>
 
       {/* Main content */}
-      <main className="max-w-7xl mx-auto px-6 py-6">
-        {rec.state.view === 'queue' && (
-          <WorkQueue
-            items={rec.unresolvedItems}
-            allItems={rec.items}
-            activeSuggestions={rec.activeSuggestions}
-            itemsWithoutSuggestion={rec.itemsWithoutSuggestion}
-            matchesSearch={rec.matchesSearch}
-            searchQuery={rec.state.searchQuery}
-            sourceFilter={rec.state.sourceFilter}
-            onResolve={rec.resolve}
-            onReject={rec.rejectSuggestion}
-            onSetSourceFilter={rec.setSourceFilter}
-            getRelatedItems={rec.getRelatedItems}
-            onViewInLedger={handleViewInLedger}
-          />
-        )}
+      {rec.state.view !== 'ledger' && (
+        <main className="max-w-7xl mx-auto px-6 py-6">
+          {rec.state.view === 'queue' && (
+            <WorkQueue
+              items={rec.unresolvedItems}
+              allItems={rec.items}
+              activeSuggestions={rec.activeSuggestions}
+              itemsWithoutSuggestion={rec.itemsWithoutSuggestion}
+              matchesSearch={rec.matchesSearch}
+              searchQuery={rec.state.searchQuery}
+              sourceFilter={rec.state.sourceFilter}
+              onResolve={rec.resolve}
+              onReject={rec.rejectSuggestion}
+              onSetSourceFilter={rec.setSourceFilter}
+              getRelatedItems={rec.getRelatedItems}
+              onViewInLedger={handleViewInLedger}
+            />
+          )}
 
-        {rec.state.view === 'resolved' && (
-          <ResolvedView
-            resolutions={rec.resolutions}
-            items={rec.items}
-            onUndo={rec.undo}
-          />
-        )}
+          {rec.state.view === 'resolved' && (
+            <ResolvedView
+              resolutions={rec.resolutions}
+              items={rec.items}
+              onUndo={rec.undo}
+            />
+          )}
 
-        {rec.state.view === 'ledger' && (
-          <LedgerView
-            items={rec.unresolvedItems}
-            resolutions={rec.resolutions}
-            resolvedItemIds={rec.resolvedItemIds}
-            sourceFilter={rec.state.sourceFilter === 'all' ? 'all' : rec.state.sourceFilter}
-            onSourceFilterChange={rec.setSourceFilter}
-            searchQuery={rec.state.searchQuery}
-            onUnmatch={rec.unmatchPair}
-            onResolve={rec.resolve}
-            scrollToItemKey={scrollToItem?.key}
-            getRelatedItems={rec.getRelatedItems}
-            unmatchedPairIds={rec.state.unmatchedPairIds}
-          />
-        )}
+          {rec.state.view === 'finish' && (
+            <FinishSummary
+              resolutions={rec.resolutions}
+              perSource={rec.perSource}
+              canFinish={rec.canFinish}
+              finishBlockReason={rec.finishBlockReason}
+              onFinish={rec.finish}
+              isLocked={rec.state.isLocked}
+              sentForReview={rec.state.sentForReview}
+            />
+          )}
+        </main>
+      )}
 
-        {rec.state.view === 'finish' && (
-          <FinishSummary
-            resolutions={rec.resolutions}
-            perSource={rec.perSource}
-            canFinish={rec.canFinish}
-            finishBlockReason={rec.finishBlockReason}
-            onFinish={rec.finish}
-            isLocked={rec.state.isLocked}
-            sentForReview={rec.state.sentForReview}
-          />
-        )}
-      </main>
+      {rec.state.view === 'ledger' && (
+        <LedgerView
+          items={rec.unresolvedItems}
+          resolutions={rec.resolutions}
+          resolvedItemIds={rec.resolvedItemIds}
+          sourceFilter={rec.state.sourceFilter === 'all' ? 'all' : rec.state.sourceFilter}
+          onSourceFilterChange={rec.setSourceFilter}
+          searchQuery={rec.state.searchQuery}
+          onUnmatch={rec.unmatchPair}
+          onResolve={rec.resolve}
+          onReject={rec.rejectSuggestion}
+          activeSuggestions={rec.activeSuggestions}
+          scrollToItemKey={scrollToItem?.key}
+          getRelatedItems={rec.getRelatedItems}
+          unmatchedPairIds={rec.state.unmatchedPairIds}
+          allItems={rec.items}
+        />
+      )}
 
       {/* Toast notifications */}
       <div className="fixed bottom-4 right-4 z-50 space-y-2 max-w-sm">
