@@ -296,6 +296,20 @@ function IssueSuggestionCard({
             <button onClick={() => onReject(suggestion.id)} className="text-sm text-gray-500 hover:text-gray-700 font-medium">
               Skip
             </button>
+            {suggestion.source === 'cards' && (
+              <button
+                onClick={() => onResolve({
+                  id: `res-receipt-${suggestion.id}`,
+                  itemIds: suggestion.itemKeys,
+                  type: 'flagged',
+                  description: 'Missing receipt — follow up with cardholder',
+                  note: 'Receipt requested',
+                })}
+                className="text-sm text-amber-600 hover:text-amber-700 font-medium border border-amber-200 px-3 py-1.5 rounded-lg hover:bg-amber-50 transition-colors"
+              >
+                Missing receipt
+              </button>
+            )}
             {suggestion.action !== 'no-match' && (
               <button onClick={handleAccept} className="bg-green-600 text-white text-sm font-semibold px-5 py-2 rounded-lg hover:bg-green-700 transition-colors">
                 Resolve
@@ -526,6 +540,20 @@ function OrphanCard({ item, allItems, isSelected, onSelect, onResolve }: OrphanC
             {isSourceSide ? (
               <>
                 <button onClick={() => setShowFlagForm(true)} className="text-sm text-gray-500 hover:text-gray-700 font-medium">Skip</button>
+                {item.source === 'cards' && (
+                  <button
+                    onClick={() => onResolve({
+                      id: `res-receipt-${item.key}`,
+                      itemIds: [item.key],
+                      type: 'flagged',
+                      description: 'Missing receipt — follow up with cardholder',
+                      note: 'Receipt requested',
+                    })}
+                    className="text-sm text-amber-600 hover:text-amber-700 font-medium border border-amber-200 px-3 py-1.5 rounded-lg hover:bg-amber-50 transition-colors"
+                  >
+                    Missing receipt
+                  </button>
+                )}
                 <button onClick={() => setShowCreateEntry(true)} className="bg-green-600 text-white text-sm font-semibold px-5 py-2 rounded-lg hover:bg-green-700 transition-colors">Resolve</button>
               </>
             ) : (
