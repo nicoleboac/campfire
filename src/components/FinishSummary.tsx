@@ -1,11 +1,18 @@
 import type { Resolution } from '../hooks/useReconcile'
+import type { Source } from '../data/seed'
+import { SOURCES } from '../data/seed'
 import { cls } from '../theme/tokens'
+
+interface PerSourceState {
+  adjSource: number
+  adjLedger: number
+  unexplained: number
+  openCount: number
+}
 
 interface Props {
   resolutions: Resolution[]
-  adjBank: number
-  adjLedger: number
-  unexplained: number
+  perSource: Record<Source, PerSourceState>
   canFinish: boolean
   finishBlockReason: string
   onFinish: () => void
@@ -21,11 +28,18 @@ function countByType(resolutions: Resolution[], type: string): number {
   return resolutions.filter(r => r.type === type).length
 }
 
+const SOURCE_ORDER: Source[] = ['bank', 'stripe', 'receivables', 'cards']
+
+const sourceBadgeCls: Record<Source, string> = {
+  bank:        'bg-blue-100 text-blue-700',
+  stripe:      'bg-violet-100 text-violet-700',
+  receivables: 'bg-teal-100 text-teal-700',
+  cards:       'bg-orange-100 text-orange-700',
+}
+
 export function FinishSummary({
   resolutions,
-  adjBank,
-  adjLedger,
-  unexplained,
+  perSource,
   canFinish,
   finishBlockReason,
   onFinish,
@@ -38,6 +52,11 @@ export function FinishSummary({
   const voided = countByType(resolutions, 'voided')
   const suspense = countByType(resolutions, 'suspense')
   const flagged = countByType(resolutions, 'flagged')
+  const applied = countByType(resolutions, 'applied-payment')
+  const creditMemos = countByType(resolutions, 'credit-memo')
+  const coded = countByType(resolutions, 'coded-expense')
+
+  const allBalanced = SOURCE_ORDER.every(src => perSource[src].unexplained === 0 && perSource[src].openCount === 0)
 
   if (sentForReview) {
     return (
@@ -49,23 +68,17 @@ export function FinishSummary({
         </div>
         <h2 className="text-xl font-semibold text-gray-900 mb-1">Sent for Review</h2>
         <p className="text-gray-500 text-sm mb-6">
-          Reconciliation locked. Operating Checking ••4821, Sep 2026.
+          Reconciliation locked. Sep 2026 · 4 sources.
         </p>
         <div className="bg-gray-50 border border-gray-200 rounded-lg p-4 text-left text-sm">
-          <div className="font-medium text-gray-700 mb-2">Summary</div>
-          <div className="space-y-1 text-gray-600">
-            <div className="flex justify-between">
-              <span>Adjusted bank balance</span>
-              <span className="font-medium">${fmt(adjBank)}</span>
-            </div>
-            <div className="flex justify-between">
-              <span>Adjusted ledger balance</span>
-              <span className="font-medium">${fmt(adjLedger)}</span>
-            </div>
-            <div className="flex justify-between font-medium text-green-700 border-t border-gray-200 pt-1 mt-1">
-              <span>Difference</span>
-              <span>$0.00 ✓</span>
-            </div>
+          <div className="font-medium text-gray-700 mb-3">Per-Source Summary</div>
+          <div className="space-y-2">
+            {SOURCE_ORDER.map(src => (
+              <div key={src} className="flex justify-between items-center py-1 border-b border-gray-100 last:border-0">
+                <span className={`${cls.badge} ${sourceBadgeCls[src]}`}>{SOURCES[src].label}</span>
+                <span className="text-green-700 font-medium text-xs">✓ $0.00</span>
+              </div>
+            ))}
           </div>
         </div>
       </div>
@@ -75,28 +88,45 @@ export function FinishSummary({
   return (
     <div className="max-w-2xl mx-auto py-8">
       <h1 className="text-xl font-semibold text-gray-900 mb-1">Finish Reconciliation</h1>
-      <p className="text-sm text-gray-500 mb-6">Operating Checking ••4821 · Sep 1–30, 2026</p>
+      <p className="text-sm text-gray-500 mb-6">Sep 1–30, 2026 · 4 sources</p>
 
-      {/* Balance check */}
-      <div className={`rounded-lg p-4 mb-6 ${unexplained === 0 ? 'bg-green-50 border border-green-200' : 'bg-red-50 border border-red-200'}`}>
-        <div className="flex items-center justify-between">
-          <div>
-            <div className={`text-sm font-medium ${unexplained === 0 ? 'text-green-800' : 'text-red-800'}`}>
-              {unexplained === 0 ? 'Balanced — ready to finish' : 'Not balanced'}
+      {/* Per-source balance check */}
+      <div className="space-y-2 mb-6">
+        {SOURCE_ORDER.map(src => {
+          const ps = perSource[src]
+          const balanced = ps.unexplained === 0 && ps.openCount === 0
+          return (
+            <div
+              key={src}
+              className={`rounded-lg p-3 flex items-center justify-between ${
+                balanced ? 'bg-green-50 border border-green-200' : 'bg-red-50 border border-red-200'
+              }`}
+            >
+              <div className="flex items-center gap-3">
+                <span className={`${cls.badge} ${sourceBadgeCls[src]}`}>{SOURCES[src].label}</span>
+                <div>
+                  <div className={`text-xs font-medium ${balanced ? 'text-green-800' : 'text-red-800'}`}>
+                    {balanced ? 'Balanced' : 'Not balanced'}
+                  </div>
+                  {!balanced && ps.openCount > 0 && (
+                    <div className="text-xs text-red-600">{ps.openCount} item{ps.openCount !== 1 ? 's' : ''} open</div>
+                  )}
+                </div>
+              </div>
+              <div className={`text-sm font-bold ${balanced ? 'text-green-700' : 'text-red-700'}`}>
+                {balanced ? '✓ $0.00' : `$${fmt(Math.abs(ps.unexplained))} unexplained`}
+              </div>
             </div>
-            {unexplained !== 0 && (
-              <div className="text-xs text-red-600 mt-0.5">{finishBlockReason}</div>
-            )}
-          </div>
-          <div className={`text-lg font-bold ${unexplained === 0 ? 'text-green-700' : 'text-red-700'}`}>
-            {unexplained === 0 ? '✓ $0.00' : `$${fmt(Math.abs(unexplained))} unexplained`}
-          </div>
-        </div>
-        <div className="flex gap-4 mt-2 text-xs text-gray-500">
-          <span>Adj bank: ${fmt(adjBank)}</span>
-          <span>Adj ledger: ${fmt(adjLedger)}</span>
-        </div>
+          )
+        })}
       </div>
+
+      {/* Overall status */}
+      {!allBalanced && finishBlockReason && (
+        <div className="bg-red-50 border border-red-200 rounded-lg p-3 mb-6 text-xs text-red-700">
+          {finishBlockReason}
+        </div>
+      )}
 
       {/* Resolution summary */}
       <div className="bg-white border border-gray-200 rounded-lg divide-y divide-gray-100 mb-6">
@@ -105,7 +135,10 @@ export function FinishSummary({
         </div>
         {[
           { label: 'Items matched', count: matched, color: 'text-green-600' },
+          { label: 'Payments applied', count: applied, color: 'text-teal-600' },
           { label: 'Entries created', count: created, color: 'text-blue-600' },
+          { label: 'Credit memos', count: creditMemos, color: 'text-violet-600' },
+          { label: 'Expenses coded', count: coded, color: 'text-orange-600' },
           { label: 'Carried forward (outstanding)', count: outstanding, color: 'text-orange-600' },
           { label: 'Duplicates voided', count: voided, color: 'text-red-600' },
           { label: 'Posted to Suspense', count: suspense, color: 'text-yellow-600' },

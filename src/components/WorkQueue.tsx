@@ -1,20 +1,22 @@
 import { useState } from 'react'
-import { CREATE_ENTRY_DEFAULTS } from '../data/seed'
-import type { LineItem, Suggestion } from '../data/seed'
+import { CREATE_ENTRY_DEFAULTS, SOURCES } from '../data/seed'
+import type { Item, Suggestion, Source } from '../data/seed'
 import type { Resolution } from '../hooks/useReconcile'
 import { cls } from '../theme/tokens'
 import { SuggestionCard } from './SuggestionCard'
 import { CreateEntryForm } from './CreateEntryForm'
 
 interface Props {
-  items: LineItem[]
-  allItems: LineItem[]
+  items: Item[]
+  allItems: Item[]
   activeSuggestions: Suggestion[]
-  itemsWithoutSuggestion: LineItem[]
-  matchesSearch: (item: LineItem) => boolean
+  itemsWithoutSuggestion: Item[]
+  matchesSearch: (item: Item) => boolean
   searchQuery: string
+  sourceFilter: Source | 'all'
   onResolve: (resolution: Omit<Resolution, 'timestamp'>) => void
   onReject: (suggestionId: string) => void
+  onSetSourceFilter: (f: Source | 'all') => void
 }
 
 function fmt(n: number) {
@@ -28,12 +30,30 @@ function fmtDate(d: string) {
 }
 
 type ItemAction =
-  | { type: 'create-entry'; itemId: string }
-  | { type: 'outstanding'; itemId: string }
-  | { type: 'void'; itemId: string }
-  | { type: 'flag'; itemId: string }
-  | { type: 'suspense'; itemId: string }
+  | { type: 'create-entry'; itemKey: string }
+  | { type: 'outstanding'; itemKey: string }
+  | { type: 'void'; itemKey: string }
+  | { type: 'flag'; itemKey: string }
+  | { type: 'suspense'; itemKey: string }
   | null
+
+const SOURCE_ORDER: Source[] = ['bank', 'stripe', 'receivables', 'cards']
+
+const sourceBadgeCls: Record<Source, string> = {
+  bank:        'bg-blue-50 text-blue-700',
+  stripe:      'bg-violet-50 text-violet-700',
+  receivables: 'bg-teal-50 text-teal-700',
+  cards:       'bg-orange-50 text-orange-700',
+}
+
+const sideBadgeCls: Record<string, string> = {
+  bank:        'bg-blue-50 text-blue-600',
+  ledger:      'bg-purple-50 text-purple-700',
+  stripe:      'bg-violet-50 text-violet-700',
+  payment:     'bg-teal-50 text-teal-700',
+  invoice:     'bg-indigo-50 text-indigo-700',
+  card:        'bg-orange-50 text-orange-700',
+}
 
 export function WorkQueue({
   items,
@@ -42,8 +62,10 @@ export function WorkQueue({
   itemsWithoutSuggestion,
   matchesSearch,
   searchQuery,
+  sourceFilter,
   onResolve,
   onReject,
+  onSetSourceFilter,
 }: Props) {
   const [activeAction, setActiveAction] = useState<ItemAction>(null)
   const [flagNote, setFlagNote] = useState('')
@@ -51,18 +73,31 @@ export function WorkQueue({
   const [suspenseNote, setSuspenseNote] = useState('')
   const [voidReason, setVoidReason] = useState('')
 
+  // Source filter tabs — count open items per source
+  const sourceCounts = SOURCE_ORDER.reduce<Record<string, number>>((acc, src) => {
+    acc[src] = items.filter(i => i.source === src).length
+    return acc
+  }, {})
+
+  // Apply source filter to suggestions
+  const sourcedSuggestions = sourceFilter === 'all'
+    ? activeSuggestions
+    : activeSuggestions.filter(s => s.source === sourceFilter)
+
   // Filter suggestions by search
-  const filteredSuggestions = activeSuggestions.filter(s => {
-    const relatedItems = [...s.bankIds, ...s.ledgerIds]
-      .map(id => allItems.find(i => i.id === id)!)
+  const filteredSuggestions = sourcedSuggestions.filter(s => {
+    const relatedItems = s.itemKeys
+      .map(key => allItems.find(i => i.key === key)!)
       .filter(Boolean)
     return relatedItems.some(item => matchesSearch(item))
   })
 
-  // Group orphan items by type
-  const orphans = itemsWithoutSuggestion.filter(matchesSearch)
-  const orphanBankMissing = orphans.filter(i => i.side === 'bank')
-  const orphanLedgerMissing = orphans.filter(i => i.side === 'ledger')
+  // Orphan items filtered by source and search
+  const sourcedOrphans = sourceFilter === 'all'
+    ? itemsWithoutSuggestion
+    : itemsWithoutSuggestion.filter(i => i.source === sourceFilter)
+
+  const orphans = sourcedOrphans.filter(matchesSearch)
 
   const totalVisible = filteredSuggestions.length + orphans.length
 
@@ -72,69 +107,92 @@ export function WorkQueue({
     note?: string
   ) {
     const adj = adjustmentOverride || suggestion.adjustment
-    const itemIds = [...suggestion.bankIds, ...suggestion.ledgerIds]
+    const itemKeys = suggestion.itemKeys
 
     if (suggestion.action === 'match') {
       onResolve({
         id: `res-${suggestion.id}`,
-        itemIds,
+        itemIds: itemKeys,
         suggestionId: suggestion.id,
         type: 'matched',
-        description: `Matched ${itemIds.join(', ')}`,
+        description: `Matched ${itemKeys.map(k => {
+          const it = allItems.find(i => i.key === k)
+          return it?.reference || it?.description || k
+        }).join(', ')}`,
       })
     } else if (suggestion.action === 'match-with-adjustment') {
       onResolve({
         id: `res-${suggestion.id}`,
-        itemIds,
+        itemIds: itemKeys,
         suggestionId: suggestion.id,
         type: 'matched-with-adjustment',
-        description: `Matched ${itemIds.join(', ')} with ${adj?.account} adjustment`,
+        description: `Matched with ${adj?.account} adjustment`,
         adjustmentAmount: adj?.amount,
         adjustmentAccount: adj?.account,
       })
-    } else if (suggestion.action === 'create-entry') {
-      setActiveAction({ type: 'create-entry', itemId: suggestion.bankIds[0] })
+    } else if (suggestion.action === 'apply-payment') {
+      if (adj) {
+        onResolve({
+          id: `res-${suggestion.id}`,
+          itemIds: itemKeys,
+          suggestionId: suggestion.id,
+          type: 'applied-payment',
+          description: `Applied payment — ${adj.description}`,
+          adjustmentAmount: adj.amount,
+          adjustmentAccount: adj.account,
+        })
+      } else {
+        onResolve({
+          id: `res-${suggestion.id}`,
+          itemIds: itemKeys,
+          suggestionId: suggestion.id,
+          type: 'applied-payment',
+          description: `Applied payment for ${itemKeys.length} item(s)`,
+        })
+      }
+    } else if (suggestion.action === 'create-entry' || suggestion.action === 'create-credit-memo' || suggestion.action === 'code-expense') {
+      setActiveAction({ type: 'create-entry', itemKey: itemKeys[0] })
     } else if (suggestion.action === 'void-duplicate') {
       onResolve({
         id: `res-${suggestion.id}`,
-        itemIds: suggestion.ledgerIds,
+        itemIds: itemKeys,
         suggestionId: suggestion.id,
         type: 'voided',
-        description: `Voided duplicate entry ${suggestion.ledgerIds.join(', ')}`,
+        description: `Voided duplicate entry`,
         note: note || 'Duplicate of already-matched entry',
       })
     } else if (suggestion.action === 'mark-outstanding') {
       onResolve({
         id: `res-${suggestion.id}`,
-        itemIds,
+        itemIds: itemKeys,
         suggestionId: suggestion.id,
         type: 'outstanding',
-        description: `Marked ${itemIds.join(', ')} outstanding (carries to October)`,
+        description: `Marked outstanding (carries to October)`,
       })
     } else if (suggestion.action === 'no-match') {
-      setActiveAction({ type: 'flag', itemId: suggestion.bankIds[0] })
+      setActiveAction({ type: 'flag', itemKey: itemKeys[0] })
     }
   }
 
-  function handleCreateEntry(itemId: string, entry: { account: string; accountCode: string; vendor: string; memo: string }) {
-    const item = allItems.find(i => i.id === itemId)!
+  function handleCreateEntry(itemKey: string, entry: { account: string; accountCode: string; vendor: string; memo: string }) {
+    const item = allItems.find(i => i.key === itemKey)!
     onResolve({
-      id: `res-create-${itemId}`,
-      itemIds: [itemId],
+      id: `res-create-${itemKey}`,
+      itemIds: [itemKey],
       type: 'created-entry',
-      description: `Created ${entry.account} entry for ${itemId} (${fmt(item.amount)})`,
+      description: `Created ${entry.account} entry for ${item.reference || item.description} (${fmt(item.amount)})`,
       adjustmentAmount: item.amount,
       adjustmentAccount: entry.account,
     })
     setActiveAction(null)
   }
 
-  function handleFlag(itemId: string) {
+  function handleFlag(itemKey: string) {
     onResolve({
-      id: `res-flag-${itemId}`,
-      itemIds: [itemId],
+      id: `res-flag-${itemKey}`,
+      itemIds: [itemKey],
       type: 'flagged',
-      description: `Flagged ${itemId} for follow-up${flagAssignee ? ` → ${flagAssignee}` : ''}`,
+      description: `Flagged for follow-up${flagAssignee ? ` → ${flagAssignee}` : ''}`,
       note: flagNote,
     })
     setFlagNote('')
@@ -142,35 +200,45 @@ export function WorkQueue({
     setActiveAction(null)
   }
 
-  function handleSuspense(itemId: string) {
-    const item = allItems.find(i => i.id === itemId)!
+  function handleSuspense(itemKey: string) {
+    const item = allItems.find(i => i.key === itemKey)!
     onResolve({
-      id: `res-suspense-${itemId}`,
-      itemIds: [itemId],
+      id: `res-suspense-${itemKey}`,
+      itemIds: [itemKey],
       type: 'suspense',
-      description: `Posted ${itemId} (${fmt(item.amount)}) to Suspense (2999)`,
+      description: `Posted ${item.reference || item.description} (${fmt(item.amount)}) to Suspense (2999)`,
       note: suspenseNote,
     })
     setSuspenseNote('')
     setActiveAction(null)
   }
 
-  function handleVoid(itemId: string) {
+  function handleVoid(itemKey: string) {
     onResolve({
-      id: `res-void-${itemId}`,
-      itemIds: [itemId],
+      id: `res-void-${itemKey}`,
+      itemIds: [itemKey],
       type: 'voided',
-      description: `Voided duplicate entry ${itemId}`,
+      description: `Voided duplicate entry`,
       note: voidReason,
     })
     setVoidReason('')
     setActiveAction(null)
   }
 
-  function renderOrphanActions(item: LineItem) {
-    if (activeAction?.itemId === item.id) {
+  function handleOrphanOutstanding(item: Item) {
+    onResolve({
+      id: `res-outstanding-${item.key}`,
+      itemIds: [item.key],
+      type: 'outstanding',
+      description: `Marked ${item.reference || item.description} outstanding — carries to October`,
+    })
+    setActiveAction(null)
+  }
+
+  function renderOrphanActions(item: Item) {
+    if (activeAction?.itemKey === item.key) {
       if (activeAction.type === 'create-entry') {
-        const defaults = CREATE_ENTRY_DEFAULTS[item.id] || {}
+        const defaults = CREATE_ENTRY_DEFAULTS[item.key] || {}
         return (
           <CreateEntryForm
             item={item}
@@ -178,7 +246,7 @@ export function WorkQueue({
             defaultAccountCode={defaults.accountCode}
             defaultVendor={defaults.vendor}
             defaultMemo={defaults.memo}
-            onSave={(entry) => handleCreateEntry(item.id, entry)}
+            onSave={(entry) => handleCreateEntry(item.key, entry)}
             onCancel={() => setActiveAction(null)}
           />
         )
@@ -198,10 +266,10 @@ export function WorkQueue({
               </div>
             </div>
             <div className="flex gap-2">
-              <button onClick={() => handleFlag(item.id)} className={cls.btnPrimary}>Flag for Follow-up</button>
+              <button onClick={() => handleFlag(item.key)} className={cls.btnPrimary}>Flag for Follow-up</button>
               <button
                 onClick={() => {
-                  setActiveAction({ type: 'suspense', itemId: item.id })
+                  setActiveAction({ type: 'suspense', itemKey: item.key })
                   setFlagNote('')
                   setFlagAssignee('')
                 }}
@@ -215,7 +283,7 @@ export function WorkQueue({
         )
       }
       if (activeAction.type === 'suspense') {
-        const item2 = allItems.find(i => i.id === activeAction.itemId)!
+        const item2 = allItems.find(i => i.key === activeAction.itemKey)!
         return (
           <div className="mt-2 p-3 bg-gray-50 border border-gray-200 rounded-md">
             <div className="text-xs font-medium text-gray-700 mb-2">Post to Suspense (2999)</div>
@@ -227,19 +295,19 @@ export function WorkQueue({
               <input className={cls.input} value={suspenseNote} onChange={e => setSuspenseNote(e.target.value)} placeholder="Reason for suspense posting" />
             </div>
             <div className="flex gap-2">
-              <button onClick={() => handleSuspense(activeAction.itemId)} disabled={!suspenseNote.trim()} className={cls.btnPrimary}>Post to Suspense</button>
+              <button onClick={() => handleSuspense(activeAction.itemKey)} disabled={!suspenseNote.trim()} className={cls.btnPrimary}>Post to Suspense</button>
               <button onClick={() => setActiveAction(null)} className={cls.btnGhost}>Cancel</button>
             </div>
           </div>
         )
       }
       if (activeAction.type === 'void') {
-        const item3 = allItems.find(i => i.id === activeAction.itemId)!
+        const item3 = allItems.find(i => i.key === activeAction.itemKey)!
         return (
           <div className="mt-2 p-3 bg-red-50 border border-red-200 rounded-md">
             <div className="text-xs font-medium text-red-700 mb-2">Void Duplicate Entry</div>
             <div className="bg-white border border-red-100 rounded p-2 mb-2">
-              <div className="text-xs text-gray-500">{item3.id} · {fmtDate(item3.date)}</div>
+              <div className="text-xs text-gray-500">{fmtDate(item3.date)}</div>
               <div className="text-sm text-gray-800">{item3.description}</div>
               <div className={`text-sm font-semibold ${item3.amount >= 0 ? 'text-green-600' : 'text-red-600'}`}>
                 {fmt(item3.amount)}
@@ -250,7 +318,7 @@ export function WorkQueue({
               <input className={cls.input} value={voidReason} onChange={e => setVoidReason(e.target.value)} placeholder="Duplicate of which entry?" />
             </div>
             <div className="flex gap-2">
-              <button onClick={() => handleVoid(activeAction.itemId)} disabled={!voidReason.trim()} className={cls.btnDanger}>Void Duplicate</button>
+              <button onClick={() => handleVoid(activeAction.itemKey)} disabled={!voidReason.trim()} className={cls.btnDanger}>Void Duplicate</button>
               <button onClick={() => setActiveAction(null)} className={cls.btnGhost}>Cancel</button>
             </div>
           </div>
@@ -260,31 +328,25 @@ export function WorkQueue({
     return null
   }
 
-  // Handle outstanding directly from sidebar suggestion
-  function handleOrphanOutstanding(item: LineItem) {
-    onResolve({
-      id: `res-outstanding-${item.id}`,
-      itemIds: [item.id],
-      type: 'outstanding',
-      description: `Marked ${item.id} outstanding — carries to October`,
-    })
-    setActiveAction(null)
-  }
-
-  // Render an item with inline outstanding button action
-  function renderOrphanItemExtended(item: LineItem) {
-    const isBank = item.side === 'bank'
-    const isActive = activeAction?.itemId === item.id
+  function renderOrphanItem(item: Item) {
+    const isSourceSide = item.side === 'bank' || item.side === 'stripe' || item.side === 'payment' || item.side === 'card'
+    const isActive = activeAction?.itemKey === item.key
     return (
-      <div key={item.id} className="bg-white border border-gray-200 rounded-lg p-3">
+      <div key={item.key} className="bg-white border border-gray-200 rounded-lg p-3">
         <div className="flex items-start justify-between gap-3">
           <div className="flex-1 min-w-0">
-            <div className="flex items-center gap-2 mb-1">
-              <span className={`text-xs px-1.5 py-0.5 rounded font-mono ${
-                isBank ? 'bg-blue-50 text-blue-700' : 'bg-purple-50 text-purple-700'
-              }`}>{item.id}</span>
+            <div className="flex items-center gap-2 mb-1 flex-wrap">
+              <span className={`text-xs px-1.5 py-0.5 rounded font-medium ${sourceBadgeCls[item.source]}`}>
+                {SOURCES[item.source].label}
+              </span>
+              <span className={`text-xs px-1.5 py-0.5 rounded ${sideBadgeCls[item.side] || 'bg-gray-50 text-gray-600'}`}>
+                {item.side}
+              </span>
               <span className="text-xs text-gray-400">{fmtDate(item.date)}</span>
-              {item.ref && <span className="text-xs text-gray-400">{item.ref}</span>}
+              {item.reference && <span className="text-xs text-gray-500 font-medium">{item.reference}</span>}
+              {item.meta?.cardholder && (
+                <span className="text-xs text-gray-400">{item.meta.cardholder} ···{item.meta.cardLast4}</span>
+              )}
             </div>
             <div className="text-sm text-gray-800">{item.description}</div>
           </div>
@@ -292,21 +354,16 @@ export function WorkQueue({
             <span className={`text-sm font-semibold ${item.amount >= 0 ? 'text-green-600' : 'text-red-600'}`}>
               {fmt(item.amount)}
             </span>
-            {isBank && (
+            {isSourceSide && (
               <>
-                <button onClick={() => setActiveAction({ type: 'create-entry', itemId: item.id })} className={cls.btnSecondary}>Create Entry</button>
-                <button onClick={() => setActiveAction({ type: 'flag', itemId: item.id })} className={cls.btnGhost}>Can't Resolve</button>
+                <button onClick={() => setActiveAction({ type: 'create-entry', itemKey: item.key })} className={cls.btnSecondary}>Create Entry</button>
+                <button onClick={() => setActiveAction({ type: 'flag', itemKey: item.key })} className={cls.btnGhost}>Can't Resolve</button>
               </>
             )}
-            {!isBank && (
+            {!isSourceSide && (
               <>
-                <button
-                  onClick={() => handleOrphanOutstanding(item)}
-                  className={cls.btnSecondary}
-                >
-                  Mark Outstanding
-                </button>
-                <button onClick={() => setActiveAction({ type: 'void', itemId: item.id })} className="text-red-600 hover:text-red-700 text-xs px-2 py-1 rounded border border-red-200 hover:bg-red-50 transition-colors">Void</button>
+                <button onClick={() => handleOrphanOutstanding(item)} className={cls.btnSecondary}>Mark Outstanding</button>
+                <button onClick={() => setActiveAction({ type: 'void', itemKey: item.key })} className="text-red-600 hover:text-red-700 text-xs px-2 py-1 rounded border border-red-200 hover:bg-red-50 transition-colors">Void</button>
               </>
             )}
           </div>
@@ -316,83 +373,119 @@ export function WorkQueue({
     )
   }
 
-  const hasMatches = filteredSuggestions.length > 0
-  const hasMissingLedger = orphanBankMissing.length > 0
-  const hasMissingBank = orphanLedgerMissing.length > 0
-
   if (totalVisible === 0 && searchQuery) {
     return (
-      <div className="text-center py-12 text-gray-400">
-        <div className="text-2xl mb-2">🔍</div>
-        <div>No items match "{searchQuery}"</div>
+      <div>
+        {/* Source filter tabs */}
+        <SourceTabs items={items} sourceFilter={sourceFilter} sourceCounts={sourceCounts} onSetSourceFilter={onSetSourceFilter} />
+        <div className="text-center py-12 text-gray-400">
+          <div className="text-2xl mb-2">🔍</div>
+          <div>No items match "{searchQuery}"</div>
+        </div>
       </div>
     )
   }
 
   if (totalVisible === 0) {
     return (
-      <div className="text-center py-12 text-gray-400">
-        <div className="text-2xl mb-2">✓</div>
-        <div className="text-gray-600 font-medium">All items resolved</div>
-        <div className="text-sm mt-1">Switch to Resolved view to review or undo</div>
+      <div>
+        <SourceTabs items={items} sourceFilter={sourceFilter} sourceCounts={sourceCounts} onSetSourceFilter={onSetSourceFilter} />
+        <div className="text-center py-12 text-gray-400">
+          <div className="text-2xl mb-2">✓</div>
+          <div className="text-gray-600 font-medium">All items resolved</div>
+          <div className="text-sm mt-1">Switch to Resolved view to review or undo</div>
+        </div>
       </div>
     )
   }
 
   return (
-    <div className="space-y-6">
+    <div className="space-y-4">
+      {/* Source filter tabs */}
+      <SourceTabs items={items} sourceFilter={sourceFilter} sourceCounts={sourceCounts} onSetSourceFilter={onSetSourceFilter} />
+
       {searchQuery && (
         <div className="text-xs text-gray-500">
-          Showing {totalVisible} of {items.length} items
+          Showing {totalVisible} item{totalVisible !== 1 ? 's' : ''}
         </div>
       )}
 
-      {/* Likely Matches */}
-      {hasMatches && (
-        <section>
-          <h2 className="text-xs font-semibold text-gray-500 uppercase tracking-wider mb-2">
-            Likely Matches
-            <span className="ml-1.5 text-gray-400 font-normal normal-case">({filteredSuggestions.length})</span>
-          </h2>
-          <div className="space-y-2">
-            {filteredSuggestions.map(suggestion => (
-              <SuggestionCard
-                key={suggestion.id}
-                suggestion={suggestion}
-                items={allItems}
-                onAccept={handleAcceptSuggestion}
-                onReject={onReject}
-              />
-            ))}
-          </div>
-        </section>
-      )}
+      <div className="space-y-6">
+        {/* Likely Matches */}
+        {filteredSuggestions.length > 0 && (
+          <section>
+            <h2 className="text-xs font-semibold text-gray-500 uppercase tracking-wider mb-2">
+              Likely Matches
+              <span className="ml-1.5 text-gray-400 font-normal normal-case">({filteredSuggestions.length})</span>
+            </h2>
+            <div className="space-y-2">
+              {filteredSuggestions.map(suggestion => (
+                <SuggestionCard
+                  key={suggestion.id}
+                  suggestion={suggestion}
+                  items={allItems}
+                  onAccept={handleAcceptSuggestion}
+                  onReject={onReject}
+                />
+              ))}
+            </div>
+          </section>
+        )}
 
-      {/* Missing from Ledger (bank items with no suggestion) */}
-      {hasMissingLedger && (
-        <section>
-          <h2 className="text-xs font-semibold text-gray-500 uppercase tracking-wider mb-2">
-            Missing from Ledger
-            <span className="ml-1.5 text-gray-400 font-normal normal-case">({orphanBankMissing.length})</span>
-          </h2>
-          <div className="space-y-2">
-            {orphanBankMissing.map(item => renderOrphanItemExtended(item))}
-          </div>
-        </section>
-      )}
+        {/* Orphan items */}
+        {orphans.length > 0 && (
+          <section>
+            <h2 className="text-xs font-semibold text-gray-500 uppercase tracking-wider mb-2">
+              Needs Attention
+              <span className="ml-1.5 text-gray-400 font-normal normal-case">({orphans.length})</span>
+            </h2>
+            <div className="space-y-2">
+              {orphans.map(item => renderOrphanItem(item))}
+            </div>
+          </section>
+        )}
+      </div>
+    </div>
+  )
+}
 
-      {/* Missing from Bank (ledger items with no suggestion) */}
-      {hasMissingBank && (
-        <section>
-          <h2 className="text-xs font-semibold text-gray-500 uppercase tracking-wider mb-2">
-            Missing from Bank
-            <span className="ml-1.5 text-gray-400 font-normal normal-case">({orphanLedgerMissing.length})</span>
-          </h2>
-          <div className="space-y-2">
-            {orphanLedgerMissing.map(item => renderOrphanItemExtended(item))}
-          </div>
-        </section>
-      )}
+function SourceTabs({
+  items,
+  sourceFilter,
+  sourceCounts,
+  onSetSourceFilter,
+}: {
+  items: Item[]
+  sourceFilter: Source | 'all'
+  sourceCounts: Record<string, number>
+  onSetSourceFilter: (f: Source | 'all') => void
+}) {
+  const allCount = items.length
+  return (
+    <div className="flex items-center gap-1 border-b border-gray-200 pb-0 -mb-px overflow-x-auto">
+      {(['all', ...SOURCE_ORDER] as (Source | 'all')[]).map(src => {
+        const count = src === 'all' ? allCount : (sourceCounts[src] ?? 0)
+        const label = src === 'all' ? 'All' : SOURCES[src].label
+        const active = sourceFilter === src
+        return (
+          <button
+            key={src}
+            onClick={() => onSetSourceFilter(src)}
+            className={`px-3 py-2 text-sm whitespace-nowrap border-b-2 transition-colors ${
+              active
+                ? 'border-blue-600 text-blue-700 font-medium'
+                : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
+            }`}
+          >
+            {label}
+            {count > 0 && (
+              <span className={`ml-1.5 text-xs px-1.5 py-0.5 rounded-full ${active ? 'bg-blue-100 text-blue-700' : 'bg-gray-100 text-gray-500'}`}>
+                {count}
+              </span>
+            )}
+          </button>
+        )
+      })}
     </div>
   )
 }

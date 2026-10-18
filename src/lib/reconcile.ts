@@ -4,68 +4,48 @@
  *
  * Sign convention: money IN = positive, money OUT = negative.
  *
- * Bank Reconciliation formula:
- *   Adjusted Bank  = Bank ending balance + outstanding item amounts
- *                    (outstanding check is negative, so this REDUCES bank balance)
- *   Adjusted Ledger = Ledger balance + adjustment entries − voided item amounts
- *                     (voiding a negative duplicate entry ADDS back to ledger)
- *   At balance: Adjusted Bank = Adjusted Ledger → unexplained diff = $0.00
+ * Per-source reconciliation formula:
+ *   Adjusted source balance = sourceBalance - sum(outstanding source-side amounts)
+ *   Adjusted ledger balance = ledgerBalance + sum(adjustments) + sum(suspense adjustments)
+ *   Unexplained = adjustedSource - adjustedLedger → $0.00 when balanced
  */
 
-export interface ReconcileState {
-  bankBalance: number
+export interface SourceState {
+  source: string
+  sourceBalance: number
   ledgerBalance: number
-  outstandingItems: { id: string; amount: number }[]
-  adjustments: { id: string; amount: number }[]   // entries created/corrected
-  suspenseItems: { id: string; amount: number }[] // B4-style items posted to suspense
-  voidedItems: { id: string; amount: number }[]   // duplicate voids
+  outstandingItems: { key: string; amount: number }[]
+  adjustments: { key: string; amount: number }[]
+  suspenseItems: { key: string; amount: number }[]
 }
 
 /**
- * Adjusted bank = bank ending balance + outstanding item amounts
- * Outstanding check L1 = −3,200: 1,284,516.32 + (−3,200) = 1,281,316.32 ✓
+ * Adjusted source balance = sourceBalance - sum(outstanding source-side amounts)
+ * Outstanding check bank-3 = −3,200: 1,284,516.32 + (−3,200) = 1,281,316.32
+ * (subtract outstanding because outstanding = not yet reflected in source)
  */
-export function adjustedBankBalance(state: ReconcileState): number {
-  const outstandingSum = state.outstandingItems.reduce((s, i) => s + i.amount, 0)
-  return round2(state.bankBalance + outstandingSum)
+export function adjustedSourceBalance(s: SourceState): number {
+  const outstandingSum = s.outstandingItems.reduce((acc, i) => acc + i.amount, 0)
+  return round2(s.sourceBalance + outstandingSum)
 }
 
 /**
- * Adjusted ledger = ledger balance + adjustment amounts − voided item amounts
- * Voiding L3 (amount = −14,388.20): ledger − (−14,388.20) = ledger + 14,388.20 ✓
+ * Adjusted ledger balance = ledgerBalance + sum(adjustments) + sum(suspense adjustments)
  */
-export function adjustedLedgerBalance(state: ReconcileState): number {
-  const adjSum = state.adjustments.reduce((s, a) => s + a.amount, 0)
-  const voidSum = state.voidedItems.reduce((s, v) => s + v.amount, 0)
-  return round2(state.ledgerBalance + adjSum - voidSum)
+export function adjustedLedgerBalance(s: SourceState): number {
+  const adjSum = s.adjustments.reduce((acc, a) => acc + a.amount, 0)
+  const suspenseSum = s.suspenseItems.reduce((acc, i) => acc + i.amount, 0)
+  return round2(s.ledgerBalance + adjSum + suspenseSum)
 }
 
 /**
- * Unexplained difference = adjusted bank − adjusted ledger
+ * Unexplained difference = adjustedSource − adjustedLedger
  * At $0.00 the rec is balanced.
  */
-export function unexplainedDifference(state: ReconcileState): number {
-  return round2(adjustedBankBalance(state) - adjustedLedgerBalance(state))
-}
-
-/**
- * The initial difference before any work:
- * 1,284,516.32 − 1,273,419.52 = 11,096.80
- */
-export function initialDifference(bankBalance: number, ledgerBalance: number): number {
-  return round2(bankBalance - ledgerBalance)
+export function unexplainedDifference(s: SourceState): number {
+  return round2(adjustedSourceBalance(s) - adjustedLedgerBalance(s))
 }
 
 export function round2(n: number): number {
   return Math.round(n * 100) / 100
-}
-
-// ── Expected end-state constants (used in tests) ─────────────────────────────
-
-export const EXPECTED = {
-  adjustedBank: 1_281_316.32,
-  adjustedLedgerWithB4Flagged: 1_278_816.32,
-  adjustedLedgerWithB4Suspense: 1_281_316.32,
-  unexplainedWithB4: 2_500.00,
-  unexplainedBalanced: 0.00,
 }

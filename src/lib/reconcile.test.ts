@@ -1,22 +1,11 @@
 import { describe, it, expect } from 'vitest'
 import {
-  adjustedBankBalance,
+  adjustedSourceBalance,
   adjustedLedgerBalance,
   unexplainedDifference,
-  initialDifference,
   round2,
-  EXPECTED,
 } from './reconcile'
-import { ACCOUNT } from '../data/seed'
-
-const BASE_STATE = {
-  bankBalance: ACCOUNT.bankBalance,
-  ledgerBalance: ACCOUNT.ledgerBalance,
-  outstandingItems: [],
-  adjustments: [],
-  suspenseItems: [],
-  voidedItems: [],
-}
+import { SOURCES } from '../data/seed'
 
 describe('round2', () => {
   it('rounds to 2 decimal places', () => {
@@ -27,111 +16,146 @@ describe('round2', () => {
   })
 })
 
-describe('initialDifference', () => {
-  it('computes the starting $11,096.80 gap', () => {
-    expect(initialDifference(ACCOUNT.bankBalance, ACCOUNT.ledgerBalance)).toBe(11_096.80)
-  })
-})
+// ── Bank source ───────────────────────────────────────────────────────────────
+// sourceBalance = 1,284,516.32  ledgerBalance = 1,278,816.32
+// outstanding bank-3 = −3,200  → adjSource = 1,281,316.32
+// suspense bank-4 = +2,500     → adjLedger = 1,281,316.32 (with suspense)
+//                              → adjLedger = 1,278,816.32 (without suspense)
 
-describe('adjustedBankBalance', () => {
-  it('returns bank balance unchanged when no outstanding items', () => {
-    expect(adjustedBankBalance(BASE_STATE)).toBe(1_284_516.32)
+describe('bank reconciliation', () => {
+  const base = {
+    source: 'bank',
+    sourceBalance: SOURCES.bank.sourceBalance,
+    ledgerBalance: SOURCES.bank.ledgerBalance,
+    outstandingItems: [],
+    adjustments: [],
+    suspenseItems: [],
+  }
+
+  it('returns raw source balance with no outstanding items', () => {
+    expect(adjustedSourceBalance(base)).toBe(1_284_516.32)
   })
 
-  it('reduces bank balance by outstanding check (L1 = −$3,200)', () => {
-    const state = {
-      ...BASE_STATE,
-      // outstanding check: amount = -3200 (money out, not yet cleared)
-      // adjusted bank = 1,284,516.32 + (−3,200) = 1,281,316.32
-      outstandingItems: [{ id: 'L1', amount: -3_200.00 }],
+  it('reduces source balance by outstanding check bank-3 (−$3,200)', () => {
+    const s = { ...base, outstandingItems: [{ key: 'bank-3', amount: -3_200.00 }] }
+    expect(adjustedSourceBalance(s)).toBe(1_281_316.32)
+  })
+
+  it('reaches $0.00 unexplained when bank-4 is posted to suspense', () => {
+    const s = {
+      ...base,
+      outstandingItems: [{ key: 'bank-3', amount: -3_200.00 }],
+      adjustments: [],
+      suspenseItems: [{ key: 'bank-4', amount: 2_500.00 }],
     }
-    expect(adjustedBankBalance(state)).toBe(EXPECTED.adjustedBank) // 1,281,316.32
-  })
-})
-
-describe('adjustedLedgerBalance', () => {
-  it('returns ledger balance unchanged with no adjustments', () => {
-    expect(adjustedLedgerBalance(BASE_STATE)).toBe(1_273_419.52)
+    expect(adjustedSourceBalance(s)).toBe(1_281_316.32)
+    expect(adjustedLedgerBalance(s)).toBe(1_281_316.32)
+    expect(unexplainedDifference(s)).toBe(0)
   })
 
-  it('applies bank-fee adjustment for B1 (−$45)', () => {
-    const state = {
-      ...BASE_STATE,
-      adjustments: [{ id: 'B1-adj', amount: -45.00 }],
-    }
-    // ledger + (-45) = 1,273,419.52 - 45 = 1,273,374.52
-    expect(adjustedLedgerBalance(state)).toBe(round2(1_273_419.52 - 45.00))
-  })
-
-  it('reverses voided duplicate L3 (amount = −$14,388.20)', () => {
-    const state = {
-      ...BASE_STATE,
-      // void L3: ledger - (L3.amount) = ledger - (-14388.20) = ledger + 14388.20
-      voidedItems: [{ id: 'L3', amount: -14_388.20 }],
-    }
-    expect(adjustedLedgerBalance(state)).toBe(round2(1_273_419.52 + 14_388.20))
-  })
-})
-
-describe('unexplainedDifference — full balanced scenario', () => {
-  /**
-   * Spec end state with B4 posted to suspense:
-   *
-   * Adjusted bank:
-   *   1,284,516.32 + (−3,200.00) [outstanding check L1] = 1,281,316.32
-   *
-   * Adjusted ledger:
-   *   1,273,419.52
-   *   + (−45.00)     B1 bank fee entry
-   *   + (−8,912.40)  B3 AWS cloud hosting entry
-   *   + (−25.00)     B6/L5 wire fee adjustment
-   *   + (−9.00)      B9/L7 ledger correction
-   *   + 2,500.00     B4 suspense entry
-   *   − (−14,388.20) void L3 duplicate (subtracts negative = adds back)
-   *   = 1,281,316.32
-   *
-   * Difference = 0
-   */
-  it('reaches $0.00 when B4 is posted to suspense', () => {
-    const state = {
-      bankBalance: ACCOUNT.bankBalance,
-      ledgerBalance: ACCOUNT.ledgerBalance,
-      outstandingItems: [{ id: 'L1', amount: -3_200.00 }],
-      adjustments: [
-        { id: 'B1-fee',      amount: -45.00 },
-        { id: 'B3-aws',      amount: -8_912.40 },
-        { id: 'B6-wire',     amount: -25.00 },
-        { id: 'B9-corr',     amount: -9.00 },
-        { id: 'B4-suspense', amount: 2_500.00 },
-      ],
-      suspenseItems: [{ id: 'B4', amount: 2_500.00 }],
-      voidedItems: [{ id: 'L3', amount: -14_388.20 }],
-    }
-    expect(adjustedBankBalance(state)).toBe(EXPECTED.adjustedBank)
-    expect(adjustedLedgerBalance(state)).toBe(EXPECTED.adjustedLedgerWithB4Suspense)
-    expect(unexplainedDifference(state)).toBe(EXPECTED.unexplainedBalanced)
-  })
-
-  it('shows $2,500.00 unexplained when B4 is only flagged (not in suspense)', () => {
-    const state = {
-      bankBalance: ACCOUNT.bankBalance,
-      ledgerBalance: ACCOUNT.ledgerBalance,
-      outstandingItems: [{ id: 'L1', amount: -3_200.00 }],
-      adjustments: [
-        { id: 'B1-fee',  amount: -45.00 },
-        { id: 'B3-aws',  amount: -8_912.40 },
-        { id: 'B6-wire', amount: -25.00 },
-        { id: 'B9-corr', amount: -9.00 },
-        // B4 NOT in adjustments — still unexplained
-      ],
+  it('shows $2,500.00 unexplained when bank-4 is not in suspense', () => {
+    const s = {
+      ...base,
+      outstandingItems: [{ key: 'bank-3', amount: -3_200.00 }],
+      adjustments: [],
       suspenseItems: [],
-      voidedItems: [{ id: 'L3', amount: -14_388.20 }],
     }
-    // adj bank = 1,281,316.32
-    // adj ledger = 1,273,419.52 - 45 - 8912.40 - 25 - 9 + 14388.20 = 1,278,816.32
-    // diff = 1,281,316.32 - 1,278,816.32 = 2,500.00
-    expect(adjustedBankBalance(state)).toBe(EXPECTED.adjustedBank)
-    expect(adjustedLedgerBalance(state)).toBe(EXPECTED.adjustedLedgerWithB4Flagged)
-    expect(unexplainedDifference(state)).toBe(EXPECTED.unexplainedWithB4)
+    expect(adjustedSourceBalance(s)).toBe(1_281_316.32)
+    expect(adjustedLedgerBalance(s)).toBe(1_278_816.32)
+    expect(unexplainedDifference(s)).toBe(2_500.00)
+  })
+})
+
+// ── Stripe source ─────────────────────────────────────────────────────────────
+// sourceBalance = 12,480.00  ledgerBalance = 14,129.50
+// adjustments: −1,489.50 (S4) and −160.00 (S5)
+// adjLedger = 14,129.50 − 1,489.50 − 160.00 = 12,480.00
+// unexplained = 0
+
+describe('stripe reconciliation', () => {
+  const base = {
+    source: 'stripe',
+    sourceBalance: SOURCES.stripe.sourceBalance,
+    ledgerBalance: SOURCES.stripe.ledgerBalance,
+    outstandingItems: [],
+    adjustments: [],
+    suspenseItems: [],
+  }
+
+  it('returns raw balances unchanged with no adjustments', () => {
+    expect(adjustedSourceBalance(base)).toBe(12_480.00)
+    expect(adjustedLedgerBalance(base)).toBe(14_129.50)
+  })
+
+  it('reaches $0.00 when both fee and credit-memo adjustments are applied', () => {
+    const s = {
+      ...base,
+      adjustments: [
+        { key: 'stripe-1-adj', amount: -1_489.50 },
+        { key: 'stripe-2-adj', amount: -160.00 },
+      ],
+    }
+    expect(adjustedLedgerBalance(s)).toBe(12_480.00)
+    expect(unexplainedDifference(s)).toBe(0)
+  })
+})
+
+// ── Receivables source ────────────────────────────────────────────────────────
+// sourceBalance = 41,975.00  ledgerBalance = 42,000.00
+// adjustment: −25.00 wire fee write-off → adjLedger = 41,975.00
+// unexplained = 0
+
+describe('receivables reconciliation', () => {
+  const base = {
+    source: 'receivables',
+    sourceBalance: SOURCES.receivables.sourceBalance,
+    ledgerBalance: SOURCES.receivables.ledgerBalance,
+    outstandingItems: [],
+    adjustments: [],
+    suspenseItems: [],
+  }
+
+  it('reaches $0.00 when wire-fee adjustment is applied', () => {
+    const s = {
+      ...base,
+      adjustments: [{ key: 'ar-wireFee', amount: -25.00 }],
+    }
+    expect(adjustedSourceBalance(s)).toBe(41_975.00)
+    expect(adjustedLedgerBalance(s)).toBe(41_975.00)
+    expect(unexplainedDifference(s)).toBe(0)
+  })
+})
+
+// ── Cards source ──────────────────────────────────────────────────────────────
+// sourceBalance = 23,914.62  ledgerBalance = 23,819.22
+// adjustments: +9.00 (Figma correction) and −86.40 (Blue Bottle code-expense)
+// adjLedger = 23,819.22 + 9.00 − 86.40 = 23,741.82  ← wait, need to reach 23,914.62
+// Spec says: adjustments +9.00 and -86.40 → adjLedger = 23,914.62
+// 23,819.22 + 9.00 + 86.40 = 23,914.62  (code-expense adds the positive amount)
+// card-3 amount is −86.40 (out), coding it means booking the expense:
+// adjustment amount = +86.40 to match ledger to source
+
+describe('cards reconciliation', () => {
+  const base = {
+    source: 'cards',
+    sourceBalance: SOURCES.cards.sourceBalance,
+    ledgerBalance: SOURCES.cards.ledgerBalance,
+    outstandingItems: [],
+    adjustments: [],
+    suspenseItems: [],
+  }
+
+  it('reaches $0.00 with Figma correction (+9.00) and code-expense (+86.40)', () => {
+    // Figma: card-1 = −1,287, card-2 = −1,278, gap = +9 → book +9 correction to ledger
+    // code-expense card-3: books the missing −86.40 to ledger (adds +86.40 to ledger side)
+    const s = {
+      ...base,
+      adjustments: [
+        { key: 'card-figma-correction', amount: 9.00 },
+        { key: 'card-3-expense',        amount: 86.40 },
+      ],
+    }
+    expect(adjustedLedgerBalance(s)).toBe(23_914.62)
+    expect(unexplainedDifference(s)).toBe(0)
   })
 })

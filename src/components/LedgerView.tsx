@@ -1,39 +1,30 @@
 import { useMemo, useState } from 'react'
-import type { LineItem } from '../data/seed'
-import { AUTO_MATCHED_ITEMS, SUGGESTIONS, type AutoMatchedItem } from '../data/seed'
+import type { Item, Source } from '../data/seed'
+import { ITEMS, SUGGESTIONS, SOURCES } from '../data/seed'
 import type { Resolution } from '../hooks/useReconcile'
 
 interface Props {
-  seedItems: LineItem[]
+  seedItems: Item[]
   resolutions: Resolution[]
   resolvedItemIds: Set<string>
   searchQuery: string
 }
 
-type GroupBy = 'date' | 'week'
-type SideFilter = 'all' | 'bank' | 'ledger'
+type GroupBy = 'date' | 'source'
+type SourceFilter = 'all' | Source
 
 interface DisplayItem {
-  id: string
-  side: 'bank' | 'ledger'
+  key: string
+  source: Source
+  side: string
   date: string
   description: string
   amount: number
-  ref?: string
+  reference?: string
+  cardholder?: string
+  cardLast4?: string
   status: 'matched' | 'resolved' | 'pending' | 'duplicate' | 'outstanding' | 'no-match' | 'flagged' | 'suspense'
   resolutionType?: string
-  isAutoMatched: boolean
-}
-
-function getWeekRange(dateStr: string): string {
-  const d = new Date(dateStr + 'T00:00:00')
-  const day = d.getDay()
-  const monday = new Date(d)
-  monday.setDate(d.getDate() - (day === 0 ? 6 : day - 1))
-  const sunday = new Date(monday)
-  sunday.setDate(monday.getDate() + 6)
-  const fmt = (dt: Date) => dt.toLocaleDateString('en-US', { month: 'short', day: 'numeric' })
-  return `${fmt(monday)} – ${fmt(sunday)}`
 }
 
 function fmt(n: number) {
@@ -68,7 +59,6 @@ const statusLabel: Record<string, string> = {
   suspense:    'In suspense',
 }
 
-// Left border color for issue rows
 const issueRowBorder: Record<string, string> = {
   pending:     'border-l-4 border-l-amber-400',
   duplicate:   'border-l-4 border-l-red-400',
@@ -78,18 +68,26 @@ const issueRowBorder: Record<string, string> = {
   suspense:    'border-l-4 border-l-yellow-400',
 }
 
+const sourceBadgeCls: Record<Source, string> = {
+  bank:        'bg-blue-50 text-blue-700',
+  stripe:      'bg-violet-50 text-violet-700',
+  receivables: 'bg-teal-50 text-teal-700',
+  cards:       'bg-orange-50 text-orange-700',
+}
+
+const SOURCE_ORDER: Source[] = ['bank', 'stripe', 'receivables', 'cards']
+
 export function LedgerView({ seedItems, resolutions, resolvedItemIds: _resolvedItemIds, searchQuery }: Props) {
   const [groupBy, setGroupBy] = useState<GroupBy>('date')
-  const [sideFilter, setSideFilter] = useState<SideFilter>('all')
+  const [sourceFilter, setSourceFilter] = useState<SourceFilter>('all')
 
   // Build issue type map from suggestions
   const issueTypeMap = useMemo(() => {
     const m: Record<string, DisplayItem['status']> = {}
     SUGGESTIONS.forEach(s => {
-      const ids = [...s.bankIds, ...s.ledgerIds]
-      if (s.action === 'void-duplicate') ids.forEach(id => { m[id] = 'duplicate' })
-      else if (s.action === 'mark-outstanding') ids.forEach(id => { m[id] = 'outstanding' })
-      else if (s.action === 'no-match') ids.forEach(id => { m[id] = 'no-match' })
+      if (s.action === 'void-duplicate') s.itemKeys.forEach(key => { m[key] = 'duplicate' })
+      else if (s.action === 'mark-outstanding') s.itemKeys.forEach(key => { m[key] = 'outstanding' })
+      else if (s.action === 'no-match') s.itemKeys.forEach(key => { m[key] = 'no-match' })
     })
     return m
   }, [])
@@ -97,27 +95,14 @@ export function LedgerView({ seedItems, resolutions, resolvedItemIds: _resolvedI
   // Build resolution type map
   const resolutionMap = useMemo(() => {
     const m: Record<string, Resolution> = {}
-    resolutions.forEach(r => r.itemIds.forEach(id => { m[id] = r }))
+    resolutions.forEach(r => r.itemIds.forEach(key => { m[key] = r }))
     return m
   }, [resolutions])
 
-  // Combine all items into DisplayItems
-  const allItems = useMemo((): DisplayItem[] => {
-    // Auto-matched items
-    const autoItems: DisplayItem[] = AUTO_MATCHED_ITEMS.map((item: AutoMatchedItem) => ({
-      id: item.id,
-      side: item.side,
-      date: item.date,
-      description: item.description,
-      amount: item.amount,
-      ref: item.ref,
-      status: 'matched' as const,
-      isAutoMatched: true,
-    }))
-
-    // Seed (unmatched) items
-    const seedDisplayItems: DisplayItem[] = seedItems.map(item => {
-      const resolution = resolutionMap[item.id]
+  // Build display items from ITEMS (all 14)
+  const allDisplayItems = useMemo((): DisplayItem[] => {
+    return ITEMS.map(item => {
+      const resolution = resolutionMap[item.key]
       let status: DisplayItem['status'] = 'pending'
 
       if (resolution) {
@@ -126,58 +111,63 @@ export function LedgerView({ seedItems, resolutions, resolvedItemIds: _resolvedI
         else if (resolution.type === 'flagged') status = 'flagged'
         else if (resolution.type === 'suspense') status = 'suspense'
         else status = 'resolved'
-      } else if (issueTypeMap[item.id]) {
-        status = issueTypeMap[item.id]
+      } else if (issueTypeMap[item.key]) {
+        status = issueTypeMap[item.key]
       }
 
       return {
-        id: item.id,
+        key: item.key,
+        source: item.source,
         side: item.side,
         date: item.date,
         description: item.description,
         amount: item.amount,
-        ref: item.ref,
+        reference: item.reference,
+        cardholder: item.meta?.cardholder,
+        cardLast4: item.meta?.cardLast4,
         status,
         resolutionType: resolution?.type,
-        isAutoMatched: false,
       }
-    })
-
-    return [...autoItems, ...seedDisplayItems].sort((a, b) => a.date.localeCompare(b.date) || a.id.localeCompare(b.id))
+    }).sort((a, b) => a.date.localeCompare(b.date))
   }, [seedItems, resolutionMap, issueTypeMap])
 
   // Apply filters
   const filtered = useMemo(() => {
     const q = searchQuery.trim().toLowerCase()
-    return allItems.filter(item => {
-      if (sideFilter !== 'all' && item.side !== sideFilter) return false
+    return allDisplayItems.filter(item => {
+      if (sourceFilter !== 'all' && item.source !== sourceFilter) return false
       if (!q) return true
       const normalQ = q.replace(/,/g, '')
       const amount = Math.abs(item.amount).toFixed(2)
       return (
         item.description.toLowerCase().includes(q) ||
-        (item.ref || '').toLowerCase().includes(q) ||
-        item.id.toLowerCase().includes(q) ||
+        (item.reference || '').toLowerCase().includes(q) ||
+        (item.cardholder || '').toLowerCase().includes(q) ||
         item.date.includes(q) ||
         amount.includes(normalQ)
       )
     })
-  }, [allItems, sideFilter, searchQuery])
+  }, [allDisplayItems, sourceFilter, searchQuery])
 
-  // Group by week or flat
+  // Group
   const groups = useMemo(() => {
     if (groupBy === 'date') return [{ label: '', items: filtered }]
-    const map = new Map<string, DisplayItem[]>()
+    const map = new Map<Source, DisplayItem[]>()
+    SOURCE_ORDER.forEach(src => map.set(src, []))
     filtered.forEach(item => {
-      const week = getWeekRange(item.date)
-      if (!map.has(week)) map.set(week, [])
-      map.get(week)!.push(item)
+      map.get(item.source)!.push(item)
     })
-    return Array.from(map.entries()).map(([label, items]) => ({ label, items }))
+    return SOURCE_ORDER
+      .filter(src => (map.get(src) || []).length > 0)
+      .map(src => ({ label: SOURCES[src].label, items: map.get(src)! }))
   }, [filtered, groupBy])
 
-  const issueCount = allItems.filter(i => !i.isAutoMatched && (i.status === 'pending' || i.status === 'duplicate' || i.status === 'no-match')).length
-  const resolvedCount = allItems.filter(i => !i.isAutoMatched && (i.status === 'resolved' || i.status === 'outstanding' || i.status === 'suspense' || i.status === 'flagged' || i.status === 'duplicate')).length
+  const issueCount = allDisplayItems.filter(i =>
+    i.status === 'pending' || i.status === 'duplicate' || i.status === 'no-match'
+  ).length
+  const resolvedCount = allDisplayItems.filter(i =>
+    i.status === 'resolved' || i.status === 'outstanding' || i.status === 'suspense' || i.status === 'flagged' || i.status === 'duplicate'
+  ).length
 
   return (
     <div>
@@ -186,7 +176,7 @@ export function LedgerView({ seedItems, resolutions, resolvedItemIds: _resolvedI
         <div className="flex items-center gap-3">
           {/* Group by toggle */}
           <div className="flex items-center gap-1 bg-gray-100 rounded-md p-0.5">
-            {(['date', 'week'] as const).map(g => (
+            {(['date', 'source'] as const).map(g => (
               <button
                 key={g}
                 onClick={() => setGroupBy(g)}
@@ -194,21 +184,21 @@ export function LedgerView({ seedItems, resolutions, resolvedItemIds: _resolvedI
                   groupBy === g ? 'bg-white text-gray-900 shadow-sm font-medium' : 'text-gray-500 hover:text-gray-700'
                 }`}
               >
-                {g === 'date' ? 'All' : 'By Week'}
+                {g === 'date' ? 'All' : 'By Source'}
               </button>
             ))}
           </div>
-          {/* Side filter */}
+          {/* Source filter */}
           <div className="flex items-center gap-1 bg-gray-100 rounded-md p-0.5">
-            {(['all', 'bank', 'ledger'] as const).map(s => (
+            {(['all', ...SOURCE_ORDER] as SourceFilter[]).map(s => (
               <button
                 key={s}
-                onClick={() => setSideFilter(s)}
-                className={`px-3 py-1 text-xs rounded capitalize transition-colors ${
-                  sideFilter === s ? 'bg-white text-gray-900 shadow-sm font-medium' : 'text-gray-500 hover:text-gray-700'
+                onClick={() => setSourceFilter(s)}
+                className={`px-3 py-1 text-xs rounded transition-colors ${
+                  sourceFilter === s ? 'bg-white text-gray-900 shadow-sm font-medium' : 'text-gray-500 hover:text-gray-700'
                 }`}
               >
-                {s === 'all' ? 'All' : s === 'bank' ? 'Bank' : 'Ledger'}
+                {s === 'all' ? 'All' : SOURCES[s].label}
               </button>
             ))}
           </div>
@@ -224,10 +214,6 @@ export function LedgerView({ seedItems, resolutions, resolvedItemIds: _resolvedI
       {/* Summary strip */}
       <div className="flex items-center gap-4 bg-white border border-gray-200 rounded-lg px-4 py-2.5 mb-4 text-xs text-gray-500">
         <div className="flex items-center gap-1.5">
-          <span className="w-2 h-2 rounded-full bg-green-400"></span>
-          <span>{AUTO_MATCHED_ITEMS.length} auto-matched</span>
-        </div>
-        <div className="flex items-center gap-1.5">
           <span className="w-2 h-2 rounded-full bg-blue-400"></span>
           <span>{resolvedCount} manually resolved</span>
         </div>
@@ -235,13 +221,18 @@ export function LedgerView({ seedItems, resolutions, resolvedItemIds: _resolvedI
           <span className="w-2 h-2 rounded-full bg-amber-400"></span>
           <span>{issueCount} needs review</span>
         </div>
+        <div className="flex items-center gap-1.5">
+          <span className="w-2 h-2 rounded-full bg-gray-300"></span>
+          <span>{allDisplayItems.length - resolvedCount - issueCount} pending</span>
+        </div>
       </div>
 
       {/* Transaction table */}
       <div className="bg-white border border-gray-200 rounded-lg overflow-hidden">
         {/* Header */}
-        <div className="grid grid-cols-[auto_1fr_auto_auto_auto] gap-3 px-4 py-2 bg-gray-50 border-b border-gray-200 text-xs font-medium text-gray-500 uppercase tracking-wider">
+        <div className="grid grid-cols-[auto_auto_1fr_auto_auto_auto] gap-3 px-4 py-2 bg-gray-50 border-b border-gray-200 text-xs font-medium text-gray-500 uppercase tracking-wider">
           <span>Date</span>
+          <span>Source</span>
           <span>Description</span>
           <span className="text-right">Amount</span>
           <span>Side</span>
@@ -250,34 +241,44 @@ export function LedgerView({ seedItems, resolutions, resolvedItemIds: _resolvedI
 
         {groups.map((group, gi) => (
           <div key={gi}>
-            {/* Week header */}
-            {groupBy === 'week' && group.label && (
+            {groupBy === 'source' && group.label && (
               <div className="px-4 py-2 bg-gray-50 border-b border-gray-100 text-xs font-semibold text-gray-600 sticky top-0">
                 {group.label}
                 <span className="ml-2 font-normal text-gray-400">{group.items.length} transactions</span>
               </div>
             )}
             {group.items.map((item) => {
-              const isIssue = !item.isAutoMatched && item.status !== 'resolved' && item.status !== 'matched'
+              const isIssue = item.status !== 'resolved' && item.status !== 'matched'
               const borderClass = isIssue ? (issueRowBorder[item.status] || '') : ''
-              const rowBg = item.isAutoMatched ? '' : isIssue ? 'bg-amber-50/30' : 'bg-blue-50/20'
+              const rowBg = isIssue ? 'bg-amber-50/30' : 'bg-blue-50/20'
               return (
                 <div
-                  key={item.id}
-                  className={`grid grid-cols-[auto_1fr_auto_auto_auto] gap-3 items-center px-4 py-2.5 border-b border-gray-100 last:border-0 text-sm ${borderClass} ${rowBg} hover:bg-gray-50 transition-colors`}
+                  key={item.key}
+                  className={`grid grid-cols-[auto_auto_1fr_auto_auto_auto] gap-3 items-center px-4 py-2.5 border-b border-gray-100 last:border-0 text-sm ${borderClass} ${rowBg} hover:bg-gray-50 transition-colors`}
                 >
                   <span className="text-gray-500 text-xs w-14 shrink-0">{fmtDate(item.date)}</span>
+                  <span className={`text-xs px-1.5 py-0.5 rounded font-medium whitespace-nowrap ${sourceBadgeCls[item.source]}`}>
+                    {SOURCES[item.source].label}
+                  </span>
                   <div className="min-w-0">
                     <div className={`truncate ${isIssue ? 'text-gray-900 font-medium' : 'text-gray-600'}`}>
                       {item.description}
                     </div>
-                    {item.ref && <div className="text-xs text-gray-400">{item.ref}</div>}
+                    {item.reference && <div className="text-xs text-gray-400">{item.reference}</div>}
+                    {item.cardholder && (
+                      <div className="text-xs text-gray-400">{item.cardholder} ···{item.cardLast4}</div>
+                    )}
                   </div>
                   <span className={`text-right font-mono text-sm tabular-nums ${item.amount >= 0 ? 'text-green-700' : 'text-red-600'}`}>
                     {fmt(item.amount)}
                   </span>
-                  <span className={`text-xs px-1.5 py-0.5 rounded font-mono w-14 text-center ${
-                    item.side === 'bank' ? 'bg-blue-50 text-blue-700' : 'bg-purple-50 text-purple-700'
+                  <span className={`text-xs px-1.5 py-0.5 rounded w-16 text-center ${
+                    item.side === 'bank' ? 'bg-blue-50 text-blue-700' :
+                    item.side === 'stripe' ? 'bg-violet-50 text-violet-700' :
+                    item.side === 'payment' ? 'bg-teal-50 text-teal-700' :
+                    item.side === 'invoice' ? 'bg-indigo-50 text-indigo-700' :
+                    item.side === 'card' ? 'bg-orange-50 text-orange-700' :
+                    'bg-purple-50 text-purple-700'
                   }`}>
                     {item.side}
                   </span>

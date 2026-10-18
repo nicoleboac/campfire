@@ -1,6 +1,6 @@
 import { useReconcile } from './hooks/useReconcile'
 import type { Resolution } from './hooks/useReconcile'
-import type { LineItem } from './data/seed'
+import type { Item } from './data/seed'
 import { StatusHeader } from './components/StatusHeader'
 import { WorkQueue } from './components/WorkQueue'
 import { FinishSummary } from './components/FinishSummary'
@@ -23,24 +23,30 @@ function fmtDate(d: string) {
 // ── Resolved view ─────────────────────────────────────────────────────────────
 
 const typeLabel: Record<string, string> = {
-  'matched': 'Matched',
-  'matched-with-adjustment': 'Matched + Adjusted',
-  'created-entry': 'Entry Created',
-  'voided': 'Voided',
-  'outstanding': 'Outstanding',
-  'suspense': 'Suspense',
-  'flagged': 'Flagged',
-  'no-match': 'No Match',
+  'matched':                'Matched',
+  'matched-with-adjustment':'Matched + Adjusted',
+  'created-entry':          'Entry Created',
+  'voided':                 'Voided',
+  'outstanding':            'Outstanding',
+  'suspense':               'Suspense',
+  'flagged':                'Flagged',
+  'no-match':               'No Match',
+  'applied-payment':        'Payment Applied',
+  'credit-memo':            'Credit Memo',
+  'coded-expense':          'Expense Coded',
 }
 
 const typeBadgeCls: Record<string, string> = {
-  'matched': 'bg-green-100 text-green-700',
-  'matched-with-adjustment': 'bg-blue-100 text-blue-700',
-  'created-entry': 'bg-blue-100 text-blue-700',
-  'voided': 'bg-red-100 text-red-700',
-  'outstanding': 'bg-orange-100 text-orange-700',
-  'suspense': 'bg-yellow-100 text-yellow-700',
-  'flagged': 'bg-gray-100 text-gray-600',
+  'matched':                'bg-green-100 text-green-700',
+  'matched-with-adjustment':'bg-blue-100 text-blue-700',
+  'created-entry':          'bg-blue-100 text-blue-700',
+  'voided':                 'bg-red-100 text-red-700',
+  'outstanding':            'bg-orange-100 text-orange-700',
+  'suspense':               'bg-yellow-100 text-yellow-700',
+  'flagged':                'bg-gray-100 text-gray-600',
+  'applied-payment':        'bg-teal-100 text-teal-700',
+  'credit-memo':            'bg-violet-100 text-violet-700',
+  'coded-expense':          'bg-orange-100 text-orange-700',
 }
 
 function ResolvedView({
@@ -49,7 +55,7 @@ function ResolvedView({
   onUndo,
 }: {
   resolutions: Resolution[]
-  items: LineItem[]
+  items: Item[]
   onUndo: (id: string) => void
 }) {
   if (resolutions.length === 0) {
@@ -66,7 +72,7 @@ function ResolvedView({
       <div className="text-xs text-gray-500 mb-3">{resolutions.length} resolved item{resolutions.length !== 1 ? 's' : ''}</div>
       <div className="space-y-2">
         {[...resolutions].reverse().map(r => {
-          const relatedItems = r.itemIds.map(id => items.find(i => i.id === id)!).filter(Boolean)
+          const relatedItems = r.itemIds.map(key => items.find(i => i.key === key)!).filter(Boolean)
           return (
             <div key={r.id} className="bg-white border border-gray-200 rounded-lg p-3 flex items-start justify-between gap-3">
               <div className="flex-1 min-w-0">
@@ -74,9 +80,6 @@ function ResolvedView({
                   <span className={`${cls.badge} ${typeBadgeCls[r.type] || 'bg-gray-100 text-gray-600'}`}>
                     {typeLabel[r.type] || r.type}
                   </span>
-                  {r.itemIds.map(id => (
-                    <span key={id} className="text-xs font-mono text-gray-500 bg-gray-50 px-1 rounded">{id}</span>
-                  ))}
                   {r.adjustmentAccount && (
                     <span className="text-xs text-gray-400">→ {r.adjustmentAccount}</span>
                   )}
@@ -91,8 +94,8 @@ function ResolvedView({
                 {relatedItems.length > 0 && (
                   <div className="flex flex-wrap gap-3 mt-1">
                     {relatedItems.map(item => (
-                      <span key={item.id} className="text-xs text-gray-400">
-                        {fmtDate(item.date)} · {item.description} · {fmtAmt(item.amount)}
+                      <span key={item.key} className="text-xs text-gray-400">
+                        {fmtDate(item.date)} · {item.reference || item.description} · {fmtAmt(item.amount)}
                       </span>
                     ))}
                   </div>
@@ -121,10 +124,7 @@ function App() {
     <div className="min-h-screen bg-gray-50">
       {/* Status header */}
       <StatusHeader
-        adjBank={rec.adjBank}
-        adjLedger={rec.adjLedger}
-        unexplained={rec.unexplained}
-        outstandingTotal={rec.outstandingTotal}
+        perSource={rec.perSource}
         resolvedCount={rec.resolvedCount}
         totalItems={rec.totalItems}
       />
@@ -178,8 +178,10 @@ function App() {
             itemsWithoutSuggestion={rec.itemsWithoutSuggestion}
             matchesSearch={rec.matchesSearch}
             searchQuery={rec.state.searchQuery}
+            sourceFilter={rec.state.sourceFilter}
             onResolve={rec.resolve}
             onReject={rec.rejectSuggestion}
+            onSetSourceFilter={rec.setSourceFilter}
           />
         )}
 
@@ -203,9 +205,7 @@ function App() {
         {rec.state.view === 'finish' && (
           <FinishSummary
             resolutions={rec.resolutions}
-            adjBank={rec.adjBank}
-            adjLedger={rec.adjLedger}
-            unexplained={rec.unexplained}
+            perSource={rec.perSource}
             canFinish={rec.canFinish}
             finishBlockReason={rec.finishBlockReason}
             onFinish={rec.finish}

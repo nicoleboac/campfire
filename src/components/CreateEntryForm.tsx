@@ -1,9 +1,9 @@
 import { useState } from 'react'
-import type { LineItem } from '../data/seed'
+import type { Item } from '../data/seed'
 import { cls } from '../theme/tokens'
 
 interface Props {
-  item: LineItem
+  item: Item
   defaultAccount?: string
   defaultAccountCode?: string
   defaultVendor?: string
@@ -34,15 +34,20 @@ export function CreateEntryForm({ item, defaultAccount = '', defaultAccountCode 
 
   return (
     <div className="bg-white border border-gray-200 rounded-lg p-4">
-      <h3 className="text-sm font-semibold text-gray-800 mb-3">Create Ledger Entry from Bank Line</h3>
+      <h3 className="text-sm font-semibold text-gray-800 mb-3">Create Ledger Entry</h3>
 
-      {/* Bank line reference */}
+      {/* Source line reference */}
       <div className="bg-blue-50 border border-blue-100 rounded p-2.5 mb-4">
         <div className="flex justify-between items-start">
           <div>
-            <div className="text-xs text-blue-500 font-medium mb-0.5">Bank line · {item.id}</div>
+            <div className="text-xs text-blue-500 font-medium mb-0.5">
+              {item.side} · {item.reference || item.description}
+            </div>
             <div className="text-sm text-gray-800">{item.description}</div>
-            {item.ref && <div className="text-xs text-gray-500 mt-0.5">{item.ref}</div>}
+            {item.reference && <div className="text-xs text-gray-500 mt-0.5">{item.reference}</div>}
+            {item.meta?.cardholder && (
+              <div className="text-xs text-gray-400 mt-0.5">{item.meta.cardholder} ···{item.meta.cardLast4}</div>
+            )}
           </div>
           <div className="text-right">
             <div className={`text-sm font-semibold ${item.amount >= 0 ? 'text-green-600' : 'text-red-600'}`}>
@@ -79,7 +84,7 @@ export function CreateEntryForm({ item, defaultAccount = '', defaultAccountCode 
             className={cls.input}
             value={account}
             onChange={e => setAccount(e.target.value)}
-            placeholder="e.g. Bank Fees"
+            placeholder="e.g. Merchant Fees"
           />
         </div>
         <div>
@@ -88,7 +93,7 @@ export function CreateEntryForm({ item, defaultAccount = '', defaultAccountCode 
             className={cls.input}
             value={accountCode}
             onChange={e => setAccountCode(e.target.value)}
-            placeholder="e.g. 6810"
+            placeholder="e.g. 6815"
           />
         </div>
         <div>
