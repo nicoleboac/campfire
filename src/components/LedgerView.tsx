@@ -237,11 +237,16 @@ export function LedgerView({
     overscan: 10,
   })
 
-  // Scroll to item when selectedItemKey changes from the right panel
+  // Scroll to item when selectedItemKey changes from the right panel.
+  // rAF defers until after the virtualizer re-renders for the new source.
   useEffect(() => {
     if (!scrollToItemKey || filteredRows.length === 0) return
     const idx = filteredRows.findIndex(r => rowKey(r) === scrollToItemKey)
-    if (idx >= 0) virtualizer.scrollToIndex(idx, { align: 'center' })
+    if (idx < 0) return
+    const raf = requestAnimationFrame(() => {
+      virtualizer.scrollToIndex(idx, { align: 'center' })
+    })
+    return () => cancelAnimationFrame(raf)
   }, [scrollToItemKey, filteredRows])
 
   const src = SOURCES[effectiveSource]
