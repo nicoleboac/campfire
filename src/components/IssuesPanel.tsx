@@ -2,7 +2,7 @@ import { useState } from 'react'
 import type { Item, Suggestion, Source } from '../data/seed'
 import { SOURCES, CREATE_ENTRY_DEFAULTS } from '../data/seed'
 import type { Resolution, useReconcile } from '../hooks/useReconcile'
-import { cls, tokens } from '../theme/tokens'
+import { cls } from '../theme/tokens'
 import { MatchDetail } from './MatchDetail'
 import { CreateEntryForm } from './CreateEntryForm'
 import { AUTO_MATCHED_PAIRS } from '../data/autoMatched'
@@ -44,12 +44,6 @@ interface Props {
 
 const SOURCE_ORDER: Source[] = ['bank', 'stripe', 'receivables', 'cards']
 
-const sourceBadgeCls: Record<Source, string> = {
-  bank:        'bg-blue-100 text-blue-700',
-  stripe:      'bg-violet-100 text-violet-700',
-  receivables: 'bg-teal-100 text-teal-700',
-  cards:       'bg-orange-100 text-orange-700',
-}
 
 const sideBadgeCls: Record<string, string> = {
   bank:        'bg-blue-50 text-blue-600',
@@ -96,7 +90,6 @@ interface SuggestionCardProps {
 function IssueSuggestionCard({
   suggestion,
   allItems,
-  isSelected,
   onSelect,
   onResolve,
   onReject,
@@ -244,105 +237,71 @@ function IssueSuggestionCard({
     setSuspenseNote('')
   }
 
-  const isExpanded = isSelected
+  const [showReview, setShowReview] = useState(false)
 
   return (
-    <div
-      className={`bg-white border rounded-xl transition-colors ${
-        isExpanded
-          ? 'ring-2 ring-blue-500 border-blue-300 bg-blue-50/30'
-          : 'border-gray-200 hover:border-gray-300'
-      }`}
-    >
-      {/* Card header — always visible */}
-      <div
-        className="p-4 cursor-pointer"
-        onClick={onSelect}
-      >
-        <div className="flex items-start justify-between gap-3">
-          <div className="flex-1 min-w-0">
-            {/* Source badge */}
-            <div className="flex items-center gap-2 mb-2">
-              <span className={`${cls.badge} ${sourceBadgeCls[suggestion.source]}`}>
-                {SOURCES[suggestion.source].label}
-              </span>
-            </div>
-
-            {/* Items summary */}
-            <div className="flex flex-wrap gap-2 mb-2">
-              {suggestionItems.map(item => {
-                const lineNum = ledgerLineNumber(item.key, suggestion.source, allItems)
-                return (
-                  <div key={item.key} className="flex items-center gap-1.5">
-                    <span className={`text-xs px-1.5 py-0.5 rounded ${sideBadgeCls[item.side] || 'bg-gray-50 text-gray-600'}`}>
-                      {item.side}
-                    </span>
-                    {lineNum !== null && (
-                      <span className="text-xs px-1.5 py-0.5 rounded bg-gray-100 text-gray-500 font-mono">
-                        line {lineNum}
-                      </span>
-                    )}
-                    <span className="text-sm text-gray-700 truncate max-w-[180px]">
-                      {item.reference ? (
-                        <><span className="font-medium text-gray-800">{item.reference}</span> — {item.description}</>
-                      ) : item.description}
-                    </span>
-                    <span className={`text-sm font-medium ${item.amount >= 0 ? 'text-green-600' : 'text-red-600'}`}>
-                      {fmt(item.amount)}
-                    </span>
-                    <span className="text-xs text-gray-400">{fmtDate(item.date)}</span>
-                    {item.meta?.cardholder && (
-                      <span className="text-xs text-gray-400">{item.meta.cardholder} ···{item.meta.cardLast4}</span>
-                    )}
+    <div className="bg-white border border-gray-200 rounded-xl hover:border-gray-300 transition-colors">
+      {/* Card body */}
+      <div className="p-4 cursor-pointer" onClick={onSelect}>
+        <div className="flex items-start gap-4">
+          {/* Items list */}
+          <div className="flex-1 min-w-0 space-y-3">
+            {suggestionItems.map(item => {
+              const lineNum = ledgerLineNumber(item.key, suggestion.source, allItems)
+              const title = item.reference
+                ? `${item.reference} · ${item.description}`
+                : item.description
+              const sideLabel = item.side.charAt(0).toUpperCase() + item.side.slice(1)
+              return (
+                <div key={item.key}>
+                  <span className={`text-xs px-2 py-0.5 rounded-full font-medium ${sideBadgeCls[item.side] || 'bg-gray-100 text-gray-600'}`}>
+                    {sideLabel}
+                  </span>
+                  <div className="text-base font-semibold text-gray-900 mt-0.5 truncate">{title}</div>
+                  <div className="text-sm text-gray-400">
+                    {lineNum !== null ? `Line ${lineNum} · ` : ''}{fmtDate(item.date)}
+                    {item.meta?.cardholder ? ` · ${item.meta.cardholder}` : ''}
                   </div>
-                )
-              })}
-            </div>
-
-            {/* Confidence + reason chips */}
-            <div className="flex items-center flex-wrap gap-1.5">
-              <span className={`${cls.badge} ${tokens.confidence[suggestion.confidence]}`}>
-                {suggestion.confidence} confidence
-              </span>
-              {suggestion.reasonChips.map((chip, i) => (
-                <span key={i} className={`${cls.badge} bg-gray-100 text-gray-600`}>{chip}</span>
-              ))}
-            </div>
-
-            {/* Adjustment preview */}
-            {suggestion.adjustment && !showDetail && (
-              <div className="mt-2 text-xs text-gray-500">
-                → {actionLabel[suggestion.action]}:{' '}
-                <span className="font-medium text-gray-700">
-                  {suggestion.adjustment.account} ({suggestion.adjustment.accountCode})
-                </span>
-                {' '}· {fmt(suggestion.adjustment.amount)}
-              </div>
-            )}
+                </div>
+              )
+            })}
           </div>
 
-          {/* Quick action buttons */}
-          <div className="flex items-center gap-2 shrink-0" onClick={e => e.stopPropagation()}>
-            <button onClick={() => onReject(suggestion.id)} className={cls.btnGhost} title="Skip suggestion">
+          {/* Actions */}
+          <div className="flex items-center gap-3 shrink-0 pt-1" onClick={e => e.stopPropagation()}>
+            <button onClick={() => onReject(suggestion.id)} className="text-sm text-gray-500 hover:text-gray-700 font-medium">
               Skip
             </button>
             {suggestion.action !== 'no-match' && (
-              <button onClick={handleAccept} className={cls.btnPrimary}>
-                {suggestion.confidence === 'high' ? '✓ ' : ''}{actionLabel[suggestion.action]}
+              <button onClick={handleAccept} className="bg-green-600 text-white text-sm font-semibold px-5 py-2 rounded-lg hover:bg-green-700 transition-colors">
+                Resolve
               </button>
             )}
           </div>
         </div>
       </div>
 
-      {/* Expanded resolution workspace */}
-      {isExpanded && !showDetail && !showVoidForm && !showFlagForm && !showSuspenseForm && (
-        <div className="px-4 pb-4 border-t border-blue-100">
-          <div className="pt-3 text-xs text-gray-400">
-            Click an action above to resolve, or use the buttons to skip or handle manually.
+      {/* Review toggle */}
+      <div className="px-4 pb-3 border-t border-gray-100 pt-2" onClick={e => e.stopPropagation()}>
+        <button
+          className="text-sm font-semibold text-gray-700 flex items-center gap-1"
+          onClick={() => setShowReview(v => !v)}
+        >
+          Review {showReview ? '∨' : '>'}
+        </button>
+        {showReview && (
+          <div className="mt-1.5 space-y-0.5">
+            {suggestion.reasonChips.map((chip, i) => (
+              <div key={i} className="text-sm text-gray-400">{chip}</div>
+            ))}
+            {suggestion.adjustment && (
+              <div className="text-sm text-gray-400">
+                {actionLabel[suggestion.action]}: {suggestion.adjustment.account} · {fmt(suggestion.adjustment.amount)}
+              </div>
+            )}
           </div>
-        </div>
-      )}
+        )}
+      </div>
 
       {/* Match/create detail panel */}
       {showDetail && (
@@ -518,42 +477,36 @@ function OrphanCard({ item, allItems, isSelected, onSelect, onResolve }: OrphanC
       }`}
     >
       <div className="p-4 cursor-pointer" onClick={onSelect}>
-        <div className="flex items-start justify-between gap-3">
+        <div className="flex items-start gap-4">
           <div className="flex-1 min-w-0">
-            <div className="flex items-center gap-2 mb-1 flex-wrap">
-              <span className={`text-xs px-1.5 py-0.5 rounded font-medium ${sourceBadgeCls[item.source]}`}>
-                {SOURCES[item.source].label}
-              </span>
-              <span className={`text-xs px-1.5 py-0.5 rounded ${sideBadgeCls[item.side] || 'bg-gray-50 text-gray-600'}`}>
-                {item.side}
-              </span>
-              {(() => {
-                const ln = ledgerLineNumber(item.key, item.source, allItems)
-                return ln !== null ? (
-                  <span className="text-xs px-1.5 py-0.5 rounded bg-gray-100 text-gray-500 font-mono">line {ln}</span>
-                ) : null
-              })()}
-              <span className="text-xs text-gray-400">{fmtDate(item.date)}</span>
-              {item.reference && <span className="text-xs text-gray-500 font-medium">{item.reference}</span>}
-              {item.meta?.cardholder && (
-                <span className="text-xs text-gray-400">{item.meta.cardholder} ···{item.meta.cardLast4}</span>
-              )}
-            </div>
-            <div className="text-sm text-gray-800">{item.description}</div>
+            {(() => {
+              const lineNum = ledgerLineNumber(item.key, item.source, allItems)
+              const sideLabel = item.side.charAt(0).toUpperCase() + item.side.slice(1)
+              const title = item.reference ? `${item.reference} · ${item.description}` : item.description
+              return (
+                <>
+                  <span className={`text-xs px-2 py-0.5 rounded-full font-medium ${sideBadgeCls[item.side] || 'bg-gray-100 text-gray-600'}`}>
+                    {sideLabel}
+                  </span>
+                  <div className="text-base font-semibold text-gray-900 mt-0.5 truncate">{title}</div>
+                  <div className="text-sm text-gray-400">
+                    {lineNum !== null ? `Line ${lineNum} · ` : ''}{fmtDate(item.date)}
+                    {item.meta?.cardholder ? ` · ${item.meta.cardholder}` : ''}
+                  </div>
+                </>
+              )
+            })()}
           </div>
-          <div className="flex items-center gap-2 shrink-0" onClick={e => e.stopPropagation()}>
-            <span className={`text-sm font-semibold ${item.amount >= 0 ? 'text-green-600' : 'text-red-600'}`}>
-              {fmt(item.amount)}
-            </span>
+          <div className="flex items-center gap-3 shrink-0 pt-1" onClick={e => e.stopPropagation()}>
             {isSourceSide ? (
               <>
-                <button onClick={() => setShowCreateEntry(true)} className={cls.btnSecondary}>Create Entry</button>
-                <button onClick={() => setShowFlagForm(true)} className={cls.btnGhost}>Can't Resolve</button>
+                <button onClick={() => setShowFlagForm(true)} className="text-sm text-gray-500 hover:text-gray-700 font-medium">Skip</button>
+                <button onClick={() => setShowCreateEntry(true)} className="bg-green-600 text-white text-sm font-semibold px-5 py-2 rounded-lg hover:bg-green-700 transition-colors">Resolve</button>
               </>
             ) : (
               <>
-                <button onClick={handleOutstanding} className={cls.btnSecondary}>Mark Outstanding</button>
-                <button onClick={() => setShowFlagForm(true)} className={cls.btnGhost}>Flag</button>
+                <button onClick={() => setShowFlagForm(true)} className="text-sm text-gray-500 hover:text-gray-700 font-medium">Flag</button>
+                <button onClick={handleOutstanding} className="bg-green-600 text-white text-sm font-semibold px-5 py-2 rounded-lg hover:bg-green-700 transition-colors">Mark Outstanding</button>
               </>
             )}
           </div>
