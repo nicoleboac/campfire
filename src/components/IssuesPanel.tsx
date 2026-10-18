@@ -719,6 +719,7 @@ export function IssuesPanel({
                       if (isSelected) {
                         onSelectItem(null)
                       } else {
+                        onSourceFilterChange(suggestion.source)
                         onSelectItem(suggestion.itemKeys[0])
                       }
                     }}
@@ -746,7 +747,12 @@ export function IssuesPanel({
                   allItems={allItems}
                   isSelected={selectedItemKey === item.key}
                   onSelect={() => {
-                    onSelectItem(selectedItemKey === item.key ? null : item.key)
+                    if (selectedItemKey === item.key) {
+                      onSelectItem(null)
+                    } else {
+                      onSourceFilterChange(item.source)
+                      onSelectItem(item.key)
+                    }
                   }}
                   onResolve={onResolve}
                 />
