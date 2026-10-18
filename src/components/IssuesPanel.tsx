@@ -11,7 +11,7 @@ interface Props {
   itemsWithoutSuggestion: Item[]
   allItems: Item[]
   sourceFilter: Source | 'all'
-  onSourceFilterChange: (s: Source) => void
+  onSourceFilterChange: (s: Source | 'all') => void
   onResolve: (resolution: Omit<Resolution, 'timestamp'>) => void
   onReject: (suggestionId: string) => void
   getRelatedItems: ReturnType<typeof useReconcile>['getRelatedItems']
@@ -771,7 +771,7 @@ interface HeaderProps {
   searchQuery: string
   onSearch: (q: string) => void
   sourceFilter: Source | 'all'
-  onSourceFilterChange: (s: Source) => void
+  onSourceFilterChange: (s: Source | 'all') => void
   allCount: number
   sourceCounts: Record<string, number>
   resolvedCount: number
@@ -807,7 +807,7 @@ function IssuesPanelHeader({
       {/* Source filter pills */}
       <div className="flex items-center gap-1 flex-wrap">
         <button
-          onClick={() => { /* all is controlled by header tiles; show everything */ }}
+          onClick={() => onSourceFilterChange('all')}
           className={`px-2.5 py-1 text-xs rounded-full border transition-colors ${
             sourceFilter === 'all'
               ? 'bg-gray-800 text-white border-gray-800'
